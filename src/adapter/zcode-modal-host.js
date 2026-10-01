@@ -6,6 +6,9 @@
 import { useState, useEffect } from 'react'
 import { createRoot } from 'react-dom/client'
 import { jsx, jsxs } from 'react/jsx-runtime'
+import { useValue, useTheme, Button } from './zcode-sdk-shim.js'
+import { SkinCenterPage } from '../ui/SkinCenterPage.js'
+import { TryOnBanner } from '../ui/TryOnBanner.js'
 
 export function ZCodeSkinCenterModal({ isOpen, onClose, store, controller, prepareScene }) {
   const [activeTab, setActiveTab] = useState('gallery')

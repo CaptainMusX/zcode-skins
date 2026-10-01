@@ -268,7 +268,6 @@ try {
       '@hermes/plugin-sdk': path.join(rootDir, 'src/adapter/zcode-sdk-shim.js'),
       'nanostores': path.join(rootDir, 'src/adapter/zcode-sdk-shim.js')
     },
-    external: ['react', 'react-dom', 'react/jsx-runtime'],
     define: {
       'process.env.NODE_ENV': '"production"'
     }

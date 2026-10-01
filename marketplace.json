@@ -1,0 +1,36 @@
+{
+  "name": "zcode-skins-market",
+  "displayName": "ZCode 皮肤美化插件市场",
+  "description": "ZCode 专属主题与桌面外观美化插件集",
+  "plugins": [
+    {
+      "name": "zcode-skins",
+      "source": {
+        "source": "local",
+        "path": "."
+      },
+      "version": "1.0.0",
+      "displayName": "ZCode 皮肤中心",
+      "displayName_i18n": {
+        "zh-CN": "ZCode 皮肤中心",
+        "en": "ZCode Skin Center"
+      },
+      "description": "ZCode 皮肤美化与主题工坊插件：提供精美主题画廊、自定义壁纸、Steam Wallpaper Engine 动态壁纸深度集成与玻璃拟态毛玻璃视觉增强。",
+      "description_i18n": {
+        "zh-CN": "ZCode 皮肤美化与主题工坊插件：提供精美主题画廊、自定义壁纸、Steam Wallpaper Engine 动态壁纸深度集成与玻璃拟态毛玻璃视觉增强。",
+        "en": "Skin gallery, custom wallpapers and glassmorphism themes for ZCode Desktop."
+      },
+      "author": {
+        "name": "CaptainMusX"
+      },
+      "category": "utilities",
+      "keywords": [
+        "skins",
+        "themes",
+        "wallpaper",
+        "appearance",
+        "ui"
+      ]
+    }
+  ]
+}
