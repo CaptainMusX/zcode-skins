@@ -7,16 +7,11 @@
   "type": "module",
   "scripts": {
     "build": "node scripts/build.js && node scripts/build-scene-helper.js && node scripts/build-native-package.js",
-    "pretest": "npm run build",
     "test": "node --test tests/*.test.js",
-    "audit:wallpaper-engine": "node scripts/audit-we-local.js",
-    "install:desktop": "node scripts/install-local.js",
-    "inject:zcode": "node scripts/inject-zcode.js",
-    "restore:zcode": "node scripts/restore-zcode.js",
-    "start:zcode": "node scripts/start-zcode.js",
-    "package:desktop": "npm run build && node scripts/package-desktop.js",
-    "install:permanent": "node scripts/pack-and-install.js",
-    "restore:official": "python scripts/restore-zcode.py --restart"
+    "pretest": "npm run build",
+    "install:zcode": "node scripts/install-permanent.mjs --restart",
+    "restore:official": "node scripts/restore-official.mjs --restart",
+    "patch:asar": "node scripts/patch-asar.mjs"
   },
   "keywords": [
     "zcode",

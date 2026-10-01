@@ -257,6 +257,18 @@ const tempEntry = path.join(distDir, 'entry.tmp.js')
 fs.writeFileSync(tempEntry, entryCode, 'utf8')
 
 try {
+  // Inline `.css` imports as plain text so the shadow root can own its
+  // stylesheet without depending on ZCode's (incomplete) Tailwind build.
+  const cssTextPlugin = {
+    name: 'css-text',
+    setup(build) {
+      build.onLoad({ filter: /\.css$/ }, async args => ({
+        contents: await fs.promises.readFile(args.path, 'utf8'),
+        loader: 'text'
+      }))
+    }
+  }
+
   await esbuild.build({
     entryPoints: [tempEntry],
     outfile: path.join(distDir, 'zcode-skins.bundle.js'),
@@ -270,7 +282,8 @@ try {
     },
     define: {
       'process.env.NODE_ENV': '"production"'
-    }
+    },
+    plugins: [cssTextPlugin]
   })
   console.log('[build] Standalone ZCode Desktop injection bundle compiled to dist/zcode-skins.bundle.js')
 } catch (e) {

@@ -19,33 +19,50 @@
 
 ## 快速使用
 
-### 方式一：CDP 零侵入免改动热启动（强烈推荐）
-
-无需改动 ZCode 官方任何二进制或代码文件，永不与官方更新冲突：
+### 一次安装，永久生效
 
 ```sh
-# 1. 安装构建依赖并打包
-npm run build
-
-# 2. 启动并自动注入皮肤
-npm run start:zcode
+npm install
+npm run install:zcode
 ```
 
-运行后将启动 ZCode 并在主窗口中即刻激活皮肤中心。按 `Ctrl+Shift+S` 即可随时唤出画廊。
+执行后 ZCode 会自动重启并加载美化插件。**此后每次从桌面图标、开始菜单或任务栏直接打开 ZCode 都会自动生效**，无需再运行任何命令，也无需保持调试端口或后台进程。
 
-### 方式二：常驻文件注入
-
-如果希望每次正常直接打开桌面 ZCode 快捷方式也能自动加载：
+如需彻底还原到 ZCode 官方纯净状态：
 
 ```sh
-npm run inject:zcode
+npm run restore:official
 ```
 
-如需还原到官方纯净状态：
+### 在 ZCode 中使用
 
-```sh
-npm run restore:zcode
-```
+- 界面右下角常驻 🎨 悬浮徽章，点击即可打开皮肤中心；
+- 或随时按下 `Ctrl+Shift+S`（亦可 `Alt+S`）唤出/隐藏面板；
+- 面板内可切换「皮肤画廊」「壁纸与背景控制」「主题工坊」三个分页。
+
+---
+
+## 实现说明
+
+### 为何不采用 ZCode 原生插件机制
+
+ZCode 的插件系统（`.zcode-plugin/plugin.json`）仅支持 `agents` / `commands` / `skills` / `hooks` / `mcpServers` 五类组件，**不具备任何界面外观或主题定制能力**，因此无法通过标准插件渠道实现皮肤美化。
+
+### 渲染隔离（Shadow DOM）
+
+ZCode 的 Tailwind 产物**缺少本插件依赖的大量工具类**（如 `bg-neutral-900/90`、`rounded-2xl`、`shadow-2xl`、`z-[99990]`、`max-w-5xl` 等）。若直接依赖宿主样式表，面板背景会退化为完全透明，导致壁纸上的文字透过面板与卡片文案重叠。
+
+因此插件在宿主页面上挂载一个 **Shadow Root**，并自带一份完整样式表（`src/styles/zcode-skins.css`）。该样式表优先复用 ZCode 自身的主题变量（`--color-card`、`--color-border` 等），在变量缺失时回退到内置调色板，从而在深浅两种模式下都能正确呈现。
+
+### 持久化机制
+
+`npm run install:zcode` 会对 ZCode 的 `app.asar` 做**二进制补丁**：
+
+1. 在归档中追加 `out/renderer/zcode-skins.bundle.js`；
+2. 在 `out/renderer/index.html` 末尾插入一行 `<script src="./zcode-skins.bundle.js"></script>`；
+3. 重写归档头（含各文件 SHA-256 完整性校验值），其余约 320 MB 数据区**逐字节原样复制**，不重新打包。
+
+由于只改动归档头与两个渲染层文件，`app.asar.unpacked` 下的原生模块（`node-pty`、`ssh2` 等）与全部文件完整性校验均保持不变。安装前会自动备份原始 `app.asar`，`restore:official` 可逐字节还原。
 
 ---
 
@@ -68,10 +85,10 @@ F:\ZCode UI增强\
 │   │   └── we-library.js        # Wallpaper Engine 本地库发现
 │   └── ui/                      # 皮肤画廊、工坊与试穿横幅组件
 ├── scripts/
-│   ├── build.js                 # 编译打包单文件 plugin.js
-│   ├── start-zcode.js           # CDP 安全免侵入启动注入器
-│   ├── inject-zcode.js          # 本地文件注入器
-│   └── restore-zcode.js         # 一键还原脚本
+│   ├── build.js                 # 编译自包含单文件 plugin.js 与注入包
+│   ├── patch-asar.mjs           # app.asar 二进制补丁器
+│   ├── install-permanent.mjs    # 一键持久化安装
+│   └── restore-official.mjs     # 一键还原官方状态
 └── plugin.js                    # 构建输出的自包含单文件插件
 ```
 

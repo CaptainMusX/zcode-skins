@@ -5425,6 +5425,11 @@ function SkinCenterPage({ store, controller, prepareScene }) {
 /**
  * ZCode Modal & Trigger Host
  * Mounts the Skin Center modal and floating trigger button into ZCode Desktop DOM.
+ *
+ * Everything renders inside a shadow root with its own stylesheet: ZCode's
+ * Tailwind build omits many utilities this UI uses, and host styles would
+ * otherwise leak in (or, worse, be missing) — leaving the panel transparent
+ * and letting the wallpaper bleed through its text.
  */
 
 
@@ -5434,8 +5439,10 @@ function SkinCenterPage({ store, controller, prepareScene }) {
 
 
 
+
+const HOST_ID = 'zcode-skins-host'
+
 function ZCodeSkinCenterModal({ isOpen, onClose, store, controller, prepareScene }) {
-  const [activeTab, setActiveTab] = useState('gallery')
   const preview = useValue(store.$tryOnSkin)
   const theme = useTheme()
 
@@ -5523,13 +5530,22 @@ function ZCodeSkinCenterModal({ isOpen, onClose, store, controller, prepareScene
 
 function setupZCodeFloatingHost({ store, controller, prepareScene }) {
   if (typeof document === 'undefined') return
+  if (document.getElementById(HOST_ID)) return
 
-  let hostContainer = document.getElementById('zcode-skins-host')
-  if (!hostContainer) {
-    hostContainer = document.createElement('div')
-    hostContainer.id = 'zcode-skins-host'
-    document.body.appendChild(hostContainer)
-  }
+  // The host element itself stays inert; every real style lives in the shadow
+  // root so ZCode's global CSS cannot strip or override the panel chrome.
+  const hostContainer = document.createElement('div')
+  hostContainer.id = HOST_ID
+  hostContainer.style.cssText = 'all: initial; position: static;'
+  document.body.appendChild(hostContainer)
+
+  const shadow = hostContainer.attachShadow({ mode: 'open' })
+  const styleEl = document.createElement('style')
+  styleEl.textContent = SKINS_CSS
+  shadow.appendChild(styleEl)
+
+  const mountPoint = document.createElement('div')
+  shadow.appendChild(mountPoint)
 
   function RootWrapper() {
     const [open, setOpen] = useState(false)
@@ -5549,6 +5565,22 @@ function setupZCodeFloatingHost({ store, controller, prepareScene }) {
       return () => window.removeEventListener('keydown', handleKeyDown)
     }, [open])
 
+    // Mirror ZCode's light/dark state onto the shadow host so the overlay
+    // palette follows the app theme instead of being hard-coded dark.
+    useEffect(() => {
+      const sync = () => {
+        const isDark = document.documentElement.classList.contains('dark') ||
+          document.body.classList.contains('dark') ||
+          window.matchMedia?.('(prefers-color-scheme: dark)').matches
+        hostContainer.setAttribute('data-zc-theme', isDark ? 'dark' : 'light')
+      }
+      sync()
+      const obs = new MutationObserver(sync)
+      obs.observe(document.documentElement, { attributes: true, attributeFilter: ['class'] })
+      obs.observe(document.body, { attributes: true, attributeFilter: ['class'] })
+      return () => obs.disconnect()
+    }, [])
+
     return jsxs('div', {
       children: [
         // Floating pill trigger
@@ -5556,7 +5588,7 @@ function setupZCodeFloatingHost({ store, controller, prepareScene }) {
           type: 'button',
           onClick: () => setOpen(true),
           title: 'ZCode 皮肤中心 (Ctrl+Shift+S)',
-          className: 'zcode-skin-floating-trigger fixed bottom-6 right-6 z-[99980] flex items-center gap-2 px-3 py-2 rounded-full bg-neutral-900/80 hover:bg-neutral-800 text-white text-xs font-medium border border-white/15 shadow-xl backdrop-blur-lg hover:scale-105 active:scale-95 transition-all duration-150 cursor-pointer',
+          className: 'zcode-skin-floating-trigger',
           children: [
             jsx('span', { className: 'text-sm', children: '🎨' }),
             jsx('span', { className: 'hidden sm:inline-block', children: '换肤' })
@@ -5574,8 +5606,7 @@ function setupZCodeFloatingHost({ store, controller, prepareScene }) {
     })
   }
 
-  const root = createRoot(hostContainer)
-  root.render(jsx(RootWrapper, {}))
+  createRoot(mountPoint).render(jsx(RootWrapper, {}))
 }
 
 // ─── Plugin Registration Entry ────────────────────────────────

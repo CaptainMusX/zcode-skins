@@ -1,10 +1,17 @@
 /**
  * ZCode Desktop Plugin SDK Shim
  * Lightweight standalone compatibility layer for UI components and reactive state.
+ *
+ * All React primitives are imported explicitly so the bundle works in a plain
+ * renderer (ZCode Desktop) that exposes no host-injected globals.
  */
 
+import { useState, useEffect } from 'react'
+import { jsx } from 'react/jsx-runtime'
+import { I18N_DICTIONARY } from '../i18n.js'
+
 // ─── Reactive Nanostores-compatible atom ────────────────────────
-export var atom = typeof globalThis.atom !== 'undefined' ? globalThis.atom : function atom(initial) {
+export var atom = function atom(initial) {
   let val = initial
   const listeners = new Set()
   return {
@@ -26,7 +33,7 @@ export var atom = typeof globalThis.atom !== 'undefined' ? globalThis.atom : fun
 }
 
 // ─── React Hook: useValue ───────────────────────────────────────
-export var useValue = typeof globalThis.useValue !== 'undefined' ? globalThis.useValue : function useValue(store) {
+export function useValue(store) {
   const [val, setVal] = useState(() => (store && typeof store.get === 'function' ? store.get() : store))
   useEffect(() => {
     if (!store || typeof store.subscribe !== 'function') return
@@ -36,7 +43,7 @@ export var useValue = typeof globalThis.useValue !== 'undefined' ? globalThis.us
 }
 
 // ─── React Hook: useTheme ───────────────────────────────────────
-export var useTheme = typeof globalThis.useTheme !== 'undefined' ? globalThis.useTheme : function useTheme() {
+export function useTheme() {
   const [mode, setMode] = useState(() => {
     if (typeof document === 'undefined') return 'dark'
     const isDark = document.documentElement.classList.contains('dark') ||
@@ -68,36 +75,31 @@ export var useTheme = typeof globalThis.useTheme !== 'undefined' ? globalThis.us
 }
 
 // ─── React Hook: usePluginI18n ──────────────────────────────────
-export var usePluginI18n = typeof globalThis.usePluginI18n !== 'undefined' ? globalThis.usePluginI18n : function usePluginI18n(dictOrNamespace = 'zcode-skins') {
+export function usePluginI18n(dictOrNamespace = 'zcode-skins') {
   const lang = typeof navigator !== 'undefined' && navigator.language?.startsWith('zh') ? 'zh' : 'en'
   return key => {
-    if (typeof I18N_DICTIONARY !== 'undefined') {
-      const dict = I18N_DICTIONARY[lang] || I18N_DICTIONARY.en || {}
-      return dict[key] || key
-    }
-    return key
+    const dict = I18N_DICTIONARY[lang] || I18N_DICTIONARY.en || {}
+    return dict[key] || key
   }
 }
 
 // ─── Constants ──────────────────────────────────────────────────
-export var ROUTES_AREA = typeof globalThis.ROUTES_AREA !== 'undefined' ? globalThis.ROUTES_AREA : 'routes'
-export var SIDEBAR_NAV_AREA = typeof globalThis.SIDEBAR_NAV_AREA !== 'undefined' ? globalThis.SIDEBAR_NAV_AREA : 'sidebar-nav'
-export var PALETTE_AREA = typeof globalThis.PALETTE_AREA !== 'undefined' ? globalThis.PALETTE_AREA : 'palette'
-export var THEMES_AREA = typeof globalThis.THEMES_AREA !== 'undefined' ? globalThis.THEMES_AREA : 'themes'
+export var ROUTES_AREA = 'routes'
+export var SIDEBAR_NAV_AREA = 'sidebar-nav'
+export var PALETTE_AREA = 'palette'
+export var THEMES_AREA = 'themes'
 
-export var host = typeof globalThis.host !== 'undefined' ? globalThis.host : {
-  isAvailable: false
-}
+export var host = { isAvailable: false }
 
 // ─── UI Atomic Components (Tailwind-compatible) ─────────────────
-export var Badge = typeof globalThis.Badge !== 'undefined' ? globalThis.Badge : function Badge({ children, className = '' }) {
+export function Badge({ children, className = '' }) {
   return jsx('span', {
     className: `inline-flex items-center rounded-full bg-primary/15 px-2 py-0.5 text-[11px] font-medium text-primary border border-primary/20 ${className}`,
     children
   })
 }
 
-export var Button = typeof globalThis.Button !== 'undefined' ? globalThis.Button : function Button({ children, variant = 'primary', size = 'default', disabled = false, onClick, className = '', ...props }) {
+export function Button({ children, variant = 'primary', size = 'default', disabled = false, onClick, className = '', ...props }) {
   let baseStyle = 'inline-flex items-center justify-center font-medium rounded-lg transition-all duration-150 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed '
   if (size === 'sm') baseStyle += 'px-2.5 py-1 text-xs '
   else if (size === 'icon') baseStyle += 'p-1.5 '
@@ -123,7 +125,7 @@ export var Button = typeof globalThis.Button !== 'undefined' ? globalThis.Button
   })
 }
 
-export var Input = typeof globalThis.Input !== 'undefined' ? globalThis.Input : function Input({ value = '', onChange, placeholder = '', className = '', ...props }) {
+export function Input({ value = '', onChange, placeholder = '', className = '', ...props }) {
   return jsx('input', {
     type: 'text',
     value,
@@ -134,7 +136,7 @@ export var Input = typeof globalThis.Input !== 'undefined' ? globalThis.Input : 
   })
 }
 
-export var Switch = typeof globalThis.Switch !== 'undefined' ? globalThis.Switch : function Switch({ checked = false, onCheckedChange, disabled = false, className = '' }) {
+export function Switch({ checked = false, onCheckedChange, disabled = false, className = '' }) {
   return jsx('button', {
     type: 'button',
     role: 'switch',
@@ -152,7 +154,7 @@ export var Switch = typeof globalThis.Switch !== 'undefined' ? globalThis.Switch
   })
 }
 
-export var SegmentedControl = typeof globalThis.SegmentedControl !== 'undefined' ? globalThis.SegmentedControl : function SegmentedControl({ value, options = [], onChange, className = '' }) {
+export function SegmentedControl({ value, options = [], onChange, className = '' }) {
   return jsx('div', {
     className: `inline-flex h-9 items-center justify-center rounded-lg bg-muted/50 p-1 text-muted-foreground border border-border/40 ${className}`,
     children: options.map(opt => {
