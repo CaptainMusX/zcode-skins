@@ -15,7 +15,7 @@
     "restore:zcode": "node scripts/restore-zcode.js",
     "start:zcode": "node scripts/start-zcode.js",
     "package:desktop": "npm run build && node scripts/package-desktop.js",
-    "install:permanent": "python scripts/apply-patch.py --restart",
+    "install:permanent": "node scripts/pack-and-install.js",
     "restore:official": "python scripts/restore-zcode.py --restart"
   },
   "keywords": [
