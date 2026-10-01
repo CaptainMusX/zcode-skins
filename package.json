@@ -1,0 +1,40 @@
+{
+  "name": "zcode-skins",
+  "version": "1.0.0",
+  "description": "Skin Center and Custom Wallpaper/Backdrop Plugin for ZCode Desktop, adapted from hermes-skins",
+  "main": "plugin.js",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "node scripts/build.js && node scripts/build-scene-helper.js && node scripts/build-native-package.js",
+    "pretest": "npm run build",
+    "test": "node --test tests/*.test.js",
+    "audit:wallpaper-engine": "node scripts/audit-we-local.js",
+    "install:desktop": "node scripts/install-local.js",
+    "inject:zcode": "node scripts/inject-zcode.js",
+    "restore:zcode": "node scripts/restore-zcode.js",
+    "start:zcode": "node scripts/start-zcode.js",
+    "package:desktop": "npm run build && node scripts/package-desktop.js"
+  },
+  "keywords": [
+    "zcode",
+    "zcode-desktop",
+    "zcode-agent",
+    "skins",
+    "themes",
+    "wallpaper",
+    "skin-center",
+    "ui-plugin"
+  ],
+  "author": "CaptainMusX",
+  "license": "SEE LICENSE IN LICENSING.md",
+  "engines": { "node": ">=22" },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/CaptainMusX/zcode-skins.git"
+  },
+  "devDependencies": {
+    "esbuild": "^0.28.2",
+    "jpeg-js": "^0.4.4"
+  }
+}

@@ -1,0 +1,7 @@
+name: hermes-skins
+version: "1.0.0"
+description: Hermes Skin Center - themes, translucent desktop surfaces and Wallpaper Engine backgrounds.
+author: CaptainMusX
+license: See LICENSING.md
+kind: standalone
+tags: [desktop, themes, wallpaper]
