@@ -14,7 +14,9 @@
     "inject:zcode": "node scripts/inject-zcode.js",
     "restore:zcode": "node scripts/restore-zcode.js",
     "start:zcode": "node scripts/start-zcode.js",
-    "package:desktop": "npm run build && node scripts/package-desktop.js"
+    "package:desktop": "npm run build && node scripts/package-desktop.js",
+    "install:permanent": "python scripts/apply-patch.py --restart",
+    "restore:official": "python scripts/restore-zcode.py --restart"
   },
   "keywords": [
     "zcode",
@@ -28,7 +30,9 @@
   ],
   "author": "CaptainMusX",
   "license": "SEE LICENSE IN LICENSING.md",
-  "engines": { "node": ">=22" },
+  "engines": {
+    "node": ">=22"
+  },
   "repository": {
     "type": "git",
     "url": "https://github.com/CaptainMusX/zcode-skins.git"
