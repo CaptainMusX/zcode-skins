@@ -1,5 +1,5 @@
 export const DEFAULT_CONFIG = {
-  schemaVersion: 4,
+  schemaVersion: 5,
   activeSkinId: 'default',
   previousTheme: null,
   wallpaperEnabled: false,
@@ -14,6 +14,9 @@ export const DEFAULT_CONFIG = {
   wallpaperSound: false,
   wallpaperVolume: 100,
   panelGlass: 10,
+  composerTransparency: 65,
+  capsuleTransparency: 65,
+  cardTransparency: 65,
   bubbleOpacity: 55,
   composerFrost: 10,
   surfaceFrost: 8,
@@ -47,6 +50,9 @@ export const PARAM_RANGES = {
   maskOcclusion: { min: 0, max: 100, unit: '%' },
   wallpaperOpacity: { min: 0, max: 100, unit: '%' },
   panelGlass: { min: 0, max: 100, unit: '%' },
+  composerTransparency: { min: 0, max: 100, unit: '%' },
+  capsuleTransparency: { min: 0, max: 100, unit: '%' },
+  cardTransparency: { min: 0, max: 100, unit: '%' },
   bubbleOpacity: { min: 0, max: 100, unit: '%' },
   composerFrost: { min: 0, max: 20, unit: 'px' },
   surfaceFrost: { min: 0, max: 20, unit: 'px' },
@@ -78,7 +84,7 @@ export function normalizeConfig(value) {
   // schema 4+ is a deliberate user choice and stays.
   const legacyBubbleDefault = (raw.schemaVersion ?? 3) < 4 && raw.bubbleOpacity === 100
   return {
-    schemaVersion: 4,
+    schemaVersion: 5,
     activeSkinId: typeof raw.activeSkinId === 'string' ? raw.activeSkinId : DEFAULT_CONFIG.activeSkinId,
     previousTheme: typeof raw.previousTheme === 'string' ? raw.previousTheme : null,
     wallpaperEnabled: typeof raw.wallpaperEnabled === 'boolean' ? raw.wallpaperEnabled : DEFAULT_CONFIG.wallpaperEnabled,
@@ -96,6 +102,9 @@ export function normalizeConfig(value) {
     // previously legal value (including the schema-1 default 80) legal as-is,
     // so no legacy mapping may rewrite 80 into 15.
     panelGlass: paramInRange('panelGlass', raw.panelGlass),
+    composerTransparency: paramInRange('composerTransparency', raw.composerTransparency),
+    capsuleTransparency: paramInRange('capsuleTransparency', raw.capsuleTransparency),
+    cardTransparency: paramInRange('cardTransparency', raw.cardTransparency),
     bubbleOpacity: legacyBubbleDefault ? 55 : paramInRange('bubbleOpacity', raw.bubbleOpacity),
     composerFrost: paramInRange('composerFrost', raw.composerFrost),
     surfaceFrost: paramInRange('surfaceFrost', raw.surfaceFrost),
@@ -106,6 +115,7 @@ export function normalizeConfig(value) {
       typeof raw.weSelection.id === 'string' && typeof raw.weSelection.title === 'string'
       ? { id: raw.weSelection.id.slice(0, 1024), title: raw.weSelection.title.slice(0, 120),
           kind: String(raw.weSelection.kind || '').slice(0, 20), staticFallback: Boolean(raw.weSelection.staticFallback),
+          dir: typeof raw.weSelection.dir === 'string' ? raw.weSelection.dir.slice(0, 1024) : null,
           framePath: typeof raw.weSelection.framePath === 'string' ? raw.weSelection.framePath.slice(0, 1024) : null,
           previewPath: typeof raw.weSelection.previewPath === 'string' ? raw.weSelection.previewPath.slice(0, 1024) : null }
       : null,

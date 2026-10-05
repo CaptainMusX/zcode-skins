@@ -1,46 +1,37 @@
-/**
- * Restore ZCode Desktop to its pristine official state.
- * Puts the backed-up app.asar back byte-for-byte.
- */
+/** Restore only a verified matching official archive, retaining the current skin. */
 import fs from 'node:fs'
 import path from 'node:path'
-import { execSync } from 'node:child_process'
+import { execFileSync, spawn } from 'node:child_process'
+import { archiveInfo, digest } from './zcode-archive.mjs'
 
-const ZCODE_DIR = process.env.ZCODE_DIR || 'D:/Program Files/ZCode'
-const RESOURCES = path.join(ZCODE_DIR, 'resources')
-const ASAR = path.join(RESOURCES, 'app.asar')
-const BACKUP = path.join(RESOURCES, 'app.asar.zcode-skins-backup')
-const EXE = path.join(ZCODE_DIR, 'ZCode.exe')
-
+const directory = path.resolve(process.env.ZCODE_DIR || 'D:/Program Files/ZCode')
+const asar = path.join(directory, 'resources/app.asar')
+const backup = asar + '.zcode-skins-backup'
+const exe = path.join(directory, 'ZCode.exe')
 const restart = process.argv.includes('--restart')
-
-if (!fs.existsSync(BACKUP)) {
-  console.log('[restore] No backup found — ZCode is already in its official state.')
-  process.exit(0)
+if (!fs.existsSync(backup)) throw new Error('No verified official backup found')
+const current = archiveInfo(asar), original = archiveInfo(backup)
+if (original.patched || current.version !== original.version || current.fingerprint !== original.fingerprint) throw new Error('Official backup does not match the current host; no files changed')
+const ps = code => execFileSync('powershell.exe', ['-NoProfile', '-Command', code], { encoding: 'utf8', windowsHide: true })
+const literal = value => "'" + value.replaceAll("'", "''") + "'"
+const processes = () => JSON.parse(ps(`$taskPids = @(Get-CimInstance Win32_Process | Where-Object { $_.Name -eq 'ZCode.exe' -and $_.ExecutablePath -eq ${literal(exe)} } | Select-Object -ExpandProperty ProcessId); ConvertTo-Json -InputObject $taskPids -Compress`).trim() || '[]')
+const ids = processes()
+if (ids.length && !restart) throw new Error('ZCode is running; close it or use --restart')
+const recovery = asar + `.zcode-skins-before-restore-${new Date().toISOString().replace(/[:.]/g, '-')}`
+fs.copyFileSync(asar, recovery)
+if (digest(fs.readFileSync(recovery)) !== digest(fs.readFileSync(asar))) throw new Error('Recovery backup verification failed')
+if (ids.length) {
+  ps(`Get-Process -Id ${ids.join(',')} -ErrorAction SilentlyContinue | ForEach-Object { if ($_.MainWindowHandle -ne 0) { [void]$_.CloseMainWindow() } }`)
+  for (let attempt = 0; attempt < 15 && processes().length; attempt++) await new Promise(r => setTimeout(r, 1000))
+  const remaining = processes()
+  if (remaining.length) { ps(`Stop-Process -Id ${remaining.join(',')} -ErrorAction Stop`); await new Promise(r => setTimeout(r, 1500)) }
 }
-
-const running = () => {
-  try {
-    const out = execSync('powershell.exe -NoProfile -Command "Get-Process -Name ZCode -ErrorAction SilentlyContinue | Measure-Object | Select-Object -ExpandProperty Count"', { encoding: 'utf8' })
-    return Number(out.trim()) > 0
-  } catch { return false }
-}
-
-if (running()) {
-  if (!restart) {
-    console.error('[restore] ZCode is running. Close it first, or pass --restart.')
-    process.exit(2)
-  }
-  console.log('[restore] Stopping ZCode...')
-  execSync('powershell.exe -NoProfile -Command "Stop-Process -Name ZCode -Force -ErrorAction SilentlyContinue"', { stdio: 'ignore' })
-  execSync('powershell.exe -NoProfile -Command "Start-Sleep -Seconds 2"', { stdio: 'ignore' })
-}
-
-console.log('[restore] Restoring official app.asar...')
-fs.copyFileSync(BACKUP, ASAR)
-console.log('[restore] ✨ ZCode Desktop restored to its official state.')
-
+try {
+  fs.copyFileSync(backup, asar)
+  if (digest(fs.readFileSync(asar)) !== digest(fs.readFileSync(backup))) throw new Error('Restore verification failed')
+} catch (error) { fs.copyFileSync(recovery, asar); throw error }
+console.log(`[restore] PASS official ${original.version}; previous installation: ${recovery}`)
 if (restart) {
-  console.log('[restore] Launching ZCode...')
-  execSync(`powershell.exe -NoProfile -Command "Start-Process '${EXE}' -WorkingDirectory '${ZCODE_DIR}'"`, { stdio: 'ignore' })
+  const child = spawn(exe, [], { cwd: directory, detached: true, stdio: 'ignore', windowsHide: true })
+  child.unref()
 }

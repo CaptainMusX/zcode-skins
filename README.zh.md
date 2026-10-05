@@ -6,6 +6,12 @@
 
 ---
 
+## 1.1.0 更新
+
+输入框和摘要胶囊严格跟随透光度与磨砂设置，菜单保留原生圆角并只绘制一层背景。补齐 Hermes 1.3.5 的光标转发、蝴蝶 X-ray、靠近光标隐藏、shake 动画与播放器性能修复。旧场景缓存按解析版本自动迁移；安装前验证宿主归档并保留当前安装的恢复副本。
+
+功能对照与验收见 [1.1.0 对照表](docs/PARITY-1.1.0.zh.md)。离线包为 `dist/zcode-skins-v1.1.0-windows.zip`，解压后运行 `install.cmd`，需要 Node.js 22+。
+
 ## 核心特性
 
 - **六款精选内置主题**：保留原版插画与视觉素材的原汁原味，涵盖艺术插画、角色美学、深色深邃与雅致浅色风格；
@@ -13,7 +19,8 @@
 - **Wallpaper Engine 动态壁纸深度集成**：自动发现本机 Steam Wallpaper Engine 库，原生支持视频（MP4/WebM）、WebGL 动态场景（Scene）与 HTML5 网页（Web）壁纸在 ZCode 背后平滑渲染；
 - **玻璃拟态透光质感（Glassmorphism）**：智能透光算法统一驱动 ZCode 侧边栏、主对话区与卡片背景，并辅以高精度毛玻璃磨砂（Backdrop Blur）；
 - **自定义主题工坊（Custom Theme Studio）**：可自由调整主色调、背景模糊度、遮罩透明度与卡片质感，支持一键保存为专属皮肤或导出/导入 JSON 配置；
-- **全局快捷呼出与悬浮徽章**：在 ZCode 界面右下角提供精致的悬浮调色盘徽章 🎨，并支持按下 `Ctrl+Shift+S` 全局呼出/隐藏皮肤中心弹窗与试穿横幅。
+- **设置页原生入口**：在 ZCode「设置 → 外观」下方提供原生样式的「皮肤中心」侧边栏项，点击即在右侧内容区打开与原生设置页完全一致的主界面（非弹窗）；`Ctrl+Shift+S` 仍可全局呼出独立弹窗；
+- **本地文件桥（zcodeDesktop bridge）**：复用 ZCode 自带的目录选择与路径解析接口，在渲染层建立文件索引，使 Wallpaper Engine 本地库导入、视频/网页壁纸实时播放在 ZCode 中开箱即用。
 
 ---
 
@@ -36,9 +43,10 @@ npm run restore:official
 
 ### 在 ZCode 中使用
 
-- 界面右下角常驻 🎨 悬浮徽章，点击即可打开皮肤中心；
-- 或随时按下 `Ctrl+Shift+S`（亦可 `Alt+S`）唤出/隐藏面板；
-- 面板内可切换「皮肤画廊」「壁纸与背景控制」「主题工坊」三个分页。
+- 打开 ZCode「设置」页面，点击左侧边栏「外观」下方的「皮肤中心」，右侧内容区即切换为皮肤中心主界面（与原生设置页一致；点击其他设置项自动切回）；
+- `Ctrl+Shift+S`（亦可 `Alt+S`）随时全局呼出/隐藏独立弹窗；
+- 面板内可切换「皮肤画廊」「壁纸与背景控制」「主题工坊」三个分页；
+- 「从 Wallpaper Engine 导入」点击「选择壁纸库目录」，选择 Steam 库根目录或 Wallpaper Engine 的 projects 目录即可扫描导入（场景项目仍需插件后端解包）。
 
 ---
 
@@ -72,8 +80,10 @@ ZCode 的 Tailwind 产物**缺少本插件依赖的大量工具类**（如 `bg-n
 F:\ZCode UI增强\
 ├── src/
 │   ├── adapter/
-│   │   ├── zcode-sdk-shim.js    # ZCode 独立轻量 SDK 适配层
-│   │   └── zcode-modal-host.js  # ZCode 模态画廊与悬浮唤出宿主
+│   │   ├── zcode-sdk-shim.js       # ZCode 独立轻量 SDK 适配层
+│   │   ├── zcode-file-bridge.js    # 本地文件桥(目录选择/文件索引/读取)
+│   │   ├── zcode-settings-nav.js   # 设置页侧边栏「皮肤中心」入口与内嵌面板
+│   │   └── zcode-modal-host.js     # ZCode 皮肤中心模态宿主(快捷键)
 │   ├── catalog/
 │   │   └── builtin-skins.js     # 六款原汁原味内置经典主题
 │   ├── engine/

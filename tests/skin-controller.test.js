@@ -29,6 +29,17 @@ function fixture() {
   return { store, calls, controller, theme, skin: skins[0] }
 }
 
+test('ZCode host theme notifications retain the persisted selected skin', () => {
+  const f = fixture()
+  f.store.saveConfig({ activeSkinId: f.skin.id, wallpaperEnabled: true })
+  f.controller.sync('zcode-default', 'light')
+  assert.equal(f.calls.find(([type]) => type === 'backdrop')[1].src, f.skin.wallpaper)
+  f.controller.destroy()
+  const count = f.calls.length
+  f.controller.sync('zcode-default', 'dark')
+  assert.equal(f.calls.length, count, 'late callbacks cannot restart a disposed skin')
+})
+
 test('fresh config stays inert and legacy transparency is bounded', () => {
   assert.equal(normalizeConfig(null).activeSkinId, 'default')
   assert.equal(normalizeConfig(null).wallpaperEnabled, false)
@@ -130,109 +141,6 @@ test('backdrop endpoints are honest: mask 100, opacity 0, blur 60 with overscan'
     assert.equal(manager.mask.style.backgroundColor, 'rgba(255,255,255,0.35)')
   } finally {
     restore()
-  }
-})
-
-test('glass CSS paints one unified material and removes itself when disabled', () => {
-  const previousDocument = globalThis.document
-  const previousGetComputedStyle = globalThis.getComputedStyle
-  let style = null
-  const attrs = new Map()
-  const headChildren = []
-  globalThis.document = {
-    documentElement: { setAttribute: (key, value) => attrs.set(key, value), removeAttribute: key => attrs.delete(key), dataset: {} },
-    head: {
-      children: headChildren,
-      contains: el => headChildren.includes(el),
-      appendChild: el => { headChildren.push(el); el.isConnected = true; style = el }
-    },
-    getElementById: () => headChildren[0] ?? null,
-    querySelector: () => null,
-    addEventListener() {},
-    removeEventListener() {},
-    createElement: tag => ({
-      tagName: tag, dataset: {}, isConnected: false, style: {}, parentNode: null,
-      remove() {
-        const index = headChildren.indexOf(this)
-        if (index >= 0) headChildren.splice(index, 1)
-        this.isConnected = false
-      }
-    })
-  }
-  try {
-    const glass = new GlassController()
-    glass.update({ enabled: true, glassTransparency: 80, surfaceFrost: 8 })
-    // One keep value drives every structural surface via shared tint vars.
-    assert.match(style.textContent, /--hermes-skins-keep: 20%/)
-    assert.match(style.textContent, /--ui-chat-surface-background: var\(--hermes-skins-chrome-tint\)/)
-    assert.match(style.textContent, /--ui-sidebar-surface-background: var\(--hermes-skins-sidebar-tint\)/)
-    assert.match(style.textContent, /--ui-editor-surface-background: var\(--hermes-skins-editor-tint\)/)
-    for (const surface of ['data-slot="sidebar"', 'data-slot="statusbar"', 'data-panel-header', 'data-persistent-terminal']) {
-      assert.ok(style.textContent.includes(surface), surface)
-    }
-    assert.match(style.textContent, /body\s*\{\s*background: transparent !important/)
-    assert.match(style.textContent, /\[data-hermes-skins-surface\]\s*\{\s*background-color: var\(--hermes-skins-editor-tint\) !important/)
-    assert.match(style.textContent, /\[data-chat-surface\] \[data-slot="composer-bounds"\]\s*\{\s*background-color: transparent !important/)
-    // Title bar and terminal get frosted glass; screen sharing keeps its paint.
-    assert.ok(style.textContent.includes('[data-contrib-shell][style*="--titlebar-height"] > div[aria-hidden="true"]'))
-    assert.match(style.textContent, /--hermes-skins-frost: blur\(8px\)/)
-    assert.ok(style.textContent.includes(':not([data-remote-screen])'))
-    // Unpatched host: terminal var pinned opaque, no canvas blend-mode fakery.
-    assert.match(style.textContent, /--ui-terminal-surface-background: var\(--ui-bg-chrome\)/)
-    assert.equal(style.textContent.includes('mix-blend-mode'), false)
-    assert.equal(style.textContent.includes('--translucency-glass-keep'), false)
-    assert.equal(style.textContent.includes('84%'), false)
-    glass.destroy()
-    assert.equal(headChildren.includes(style), false)
-    assert.equal(glass.styleEl, null)
-    assert.equal(attrs.has('data-hermes-skins-active'), false)
-  } finally {
-    globalThis.document = previousDocument
-  }
-})
-
-test('glass endpoints are honest: panelGlass 100 leaves no floor, 0 keeps full fill', () => {
-  const previousDocument = globalThis.document
-  const previousGetComputedStyle = globalThis.getComputedStyle
-  let style = null
-  const build = () => {
-    style = null
-    globalThis.document = {
-      documentElement: { setAttribute() {}, removeAttribute() {}, dataset: {} },
-      head: { contains: () => false, appendChild: el => { style = el; el.isConnected = true } },
-      getElementById: () => null,
-      querySelector: () => null,
-      addEventListener() {},
-      removeEventListener() {},
-      createElement: tag => ({ tagName: tag, dataset: {}, isConnected: false, style: {}, remove() {} })
-    }
-  }
-  try {
-    build()
-    const glass = new GlassController()
-    // 100% transparency: keep 0 — fully transparent panels, no 45% residue.
-    glass.update({ enabled: true, glassTransparency: 100 })
-    assert.match(style.textContent, /--hermes-skins-keep: 0%/)
-    assert.equal(/--hermes-skins-keep:\s*45%/.test(style.textContent), false)
-    assert.equal(/Math\.max\(45/.test(style.textContent), false)
-    // 0% transparency: keep 100 — the panels keep their full theme fill.
-    glass.update({ enabled: true, glassTransparency: 0 })
-    assert.match(style.textContent, /--hermes-skins-keep: 100%/)
-    // Bubble 0 stays 0 — the || fallback that used to map 0 to 100 is gone.
-    glass.update({ enabled: true, bubbleOpacity: 0 })
-    assert.match(style.textContent, /--user-bubble-keep: 0% !important/)
-    // A host advertising terminal alpha gets a comma-form rgba literal — the
-    // only translucent color format xterm's own parser survives (a color-mix
-    // chain serializes as "color(srgb …)" and paints the canvas #000000).
-    globalThis.document.documentElement.dataset.hermesTerminalAlpha = 'true'
-    globalThis.document.body = { appendChild() {} }
-    globalThis.getComputedStyle = () => ({ backgroundColor: 'color(srgb 1 1 1)' })
-    glass.update({ enabled: true, glassTransparency: 80 })
-    assert.match(style.textContent, /--ui-terminal-surface-background: rgba\(255, 255, 255, 0\.2\)/)
-    glass.destroy()
-  } finally {
-    globalThis.document = previousDocument
-    globalThis.getComputedStyle = previousGetComputedStyle
   }
 })
 

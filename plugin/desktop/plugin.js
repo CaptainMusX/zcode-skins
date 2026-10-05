@@ -1,6 +1,6 @@
 /**
  * ZCode Skin Center (zcode-skins)
- * Version: 1.0.0
+ * Version: 1.1.1
  * Author: CaptainMusX (adapted for ZCode Desktop)
  *
  * Standalone Desktop Beautification & Skin Plugin for ZCode Desktop.
@@ -57,6 +57,12 @@ const I18N_DICTIONARY = {
     maskOcclusion: 'Backdrop Occlusion Mask',
     maskOcclusionDesc: 'Wallpaper veil; 100% fully hides the wallpaper (0% - 100%).',
     panelGlass: 'Interface Transparency',
+    composerTransparency: 'Composer Transparency',
+    composerTransparencyDesc: 'Input card background only; independent of interface transparency. 0% opaque, 100% transparent.',
+    capsuleTransparency: 'Summary Capsule Transparency',
+    capsuleTransparencyDesc: 'Top-right summary capsule and expanded summary background. 0% opaque, 100% transparent.',
+    cardTransparency: 'Card Transparency',
+    cardTransparencyDesc: 'Settings cards, tool cards and code backgrounds. 0% opaque, 100% transparent; text and button colors stay unchanged.',
     panelGlassDesc: 'Shared transparency for panels, title bar, sidebars, and status bar; menus and popovers retain a readable translucent fill. 0% keeps the full panel fill, 100% makes it transparent (0% - 100%).',
     selectSkinFirst: 'Choose a skin, enter a media path, or pick a Wallpaper Engine project.',
     invalidWallpaperSource: 'Use an http(s) URL, a file URL, or an absolute local path.',
@@ -77,6 +83,14 @@ const I18N_DICTIONARY = {
     weSceneBackendUnavailable: 'Scene backend unavailable. Restart ZCode after installing the plugin backend.',
     weSceneBackendMissing: 'The scene backend is not enabled in ZCode (404). Run "npm run install:desktop" in the plugin folder, then restart ZCode.',
     weSceneUnsupported: 'This scene has no supported renderable layers or video.',
+    weSceneFallbackNote: 'The scene package could not be read — the static preview frame is used instead.',
+    weLoadFailed: 'The wallpaper media failed to load — the file may be missing or unreadable. Try another project.',
+    weReauthorize: 'Scene source unavailable; preview preserved. Select its folder to authorize again.',
+    weSceneFallback: 'Live scene unavailable; showing its preview. Reselect the wallpaper to retry.',
+    weScenePickHint: title => `The scene package for "${title}" could not be read from the indexed files. Pick the project folder (the one containing scene.pkg); it retries automatically.`,
+    weScenePickButton: 'Pick project folder',
+    wePickHint: 'Tip: pick the Wallpaper Engine content folder (…/Steam/steamapps/workshop/content/431960) — picking the whole Steam root can truncate the file listing.',
+    weAppliedHint: title => `Applied "${title}". Go back to the workspace to see the wallpaper.`,
     weUse: 'Use as wallpaper',
     weSelected: 'Selected',
     weTypeVideo: 'Video',
@@ -159,6 +173,12 @@ const I18N_DICTIONARY = {
     maskOcclusion: '防遮挡遮罩不透明度',
     maskOcclusionDesc: '明暗自适应遮罩；100% 表示完全遮住壁纸 (0% - 100%)。',
     panelGlass: '界面透光度',
+    composerTransparency: '输入框透光度',
+    composerTransparencyDesc: '单独调整输入卡片底色，不受界面透光度影响。0% 不透明，100% 完全透明。',
+    capsuleTransparency: '右上胶囊透光度',
+    capsuleTransparencyDesc: '单独调整右上摘要胶囊及展开面板底色。0% 不透明，100% 完全透明。',
+    cardTransparency: '卡片透光度',
+    cardTransparencyDesc: '调整设置卡片、工具卡片和代码底色。0% 不透明，100% 完全透明；文字与按钮颜色保持原样。',
     panelGlassDesc: '面板、顶栏、侧栏与底栏共用的透光度；菜单与浮窗保留适量透光底色以保证可读。0% 保留完整面板底色，100% 面板底色完全透明 (0% - 100%)。',
     selectSkinFirst: '请先选择皮肤、填写媒体路径，或从 Wallpaper Engine 选择项目。',
     invalidWallpaperSource: '请输入 http(s) 地址、file 地址或本地绝对路径。',
@@ -179,6 +199,14 @@ const I18N_DICTIONARY = {
     weSceneBackendUnavailable: '场景后端尚未启用。安装后请重启 ZCode。',
     weSceneBackendMissing: '场景后端未在网关白名单中启用(404)。请在插件目录重新运行 "npm run install:desktop",然后重启 ZCode。',
     weSceneUnsupported: '此场景没有可支持的图层或视频。',
+    weSceneFallbackNote: '场景包未能读取——已改用其静态预览帧。',
+    weLoadFailed: '壁纸素材加载失败——文件可能已缺失或不可读，请尝试其他项目。',
+    weReauthorize: '场景源包暂不可读，已保留静帧；请选择原壁纸目录重新授权。',
+    weSceneFallback: '动态场景暂不可用，已退回静帧。可重新选择壁纸重试。',
+    weScenePickHint: title => `「${title}」的场景包未能从已索引文件中读取。请选择该项目的文件夹（包含 scene.pkg），选择后将自动重试。`,
+    weScenePickButton: '选择项目文件夹',
+    wePickHint: '提示：建议选择 Wallpaper Engine 的 content/431960 目录（文件少、枚举完整）；直接选择 Steam 根目录可能因文件过多导致枚举不全。',
+    weAppliedHint: title => `已应用「${title}」，返回工作区即可看到壁纸效果。`,
     weUse: '设为壁纸',
     weSelected: '已选用',
     weTypeVideo: '视频',
@@ -773,12 +801,18 @@ const BUILTIN_SKINS = [
 
 const ROOT_ID = 'zcode-skins-backdrop-root'
 
+/** Local file bridge: ZCode Desktop installs window.zcodeDesktop, Hermes
+ * hosts provide window.hermesDesktop. */
+const getLocalBridge = () =>
+  typeof window !== 'undefined' ? (window.zcodeDesktop || window.hermesDesktop) : null
+
 function normalizeMediaSource(input, type = 'image') {
   if (typeof input !== 'string' || !input.trim()) return null
   const source = input.trim()
   if (/^https?:\/\//i.test(source)) return source
   if (type === 'image' && /^data:image\/(svg\+xml|png|jpeg|webp);/i.test(source)) return source
   if (type === 'video' && /^hermes-media:\/\/stream\/[^\s?#]+$/i.test(source)) return source
+  if (/^zcode-scene:\/\//i.test(source)) return source
   if (/^file:\/\/\//i.test(source)) return source
   if (/^[a-zA-Z]:[\\/]/.test(source)) {
     const normalized = source.replace(/\\/g, '/')
@@ -789,7 +823,8 @@ function normalizeMediaSource(input, type = 'image') {
 
 /** Fixed backdrop sits behind the app shell and never receives input. */
 class BackdropManager {
-  constructor() {
+  constructor({ prepareScene = null } = {}) {
+    this.prepareScene = prepareScene
     this.root = null
     this.media = null
     this.mask = null
@@ -799,7 +834,13 @@ class BackdropManager {
     this.sceneIframe = null
     this.sceneManifest = null
     this.sceneUrls = []
+    this.sceneLoad = null
+    this.sceneReloads = 0
     this.sceneListeners = false
+    this.webIframe = null
+    this.cursorForwardInit = false
+    this.cursorFrame = null
+    this.pendingCursor = null
     this.videoElement = null
     this.pauseOnHidden = true
     this.fitValue = 'cover'
@@ -807,10 +848,22 @@ class BackdropManager {
     this.soundValue = false
     this.volumeValue = 100
     this.handleSceneMessage = event => {
-      if (event.source !== this.sceneIframe?.contentWindow || event.data?.type !== 'dsh-scene-needs-reload') return
-      this.sceneIframe.srcdoc = scenePlayerHtml(this.soundValue, this.volumeValue)
+      if (!this.sceneIframe || event.source !== this.sceneIframe.contentWindow) return
+      if (event.data?.type === 'dsh-scene-failed') {
+        this.stopScene()
+        this.reportFallback()
+        if (!this.media?.querySelector('img')) this.fail(this.currentKey)
+      } else if (event.data?.type === 'dsh-scene-needs-reload') {
+        // Repeated context loss must fall back instead of creating a reload loop.
+        if (this.sceneReloads++ >= 1) {
+          this.stopScene()
+          this.reportFallback()
+          if (!this.media?.querySelector('img')) this.fail(this.currentKey)
+        } else this.sceneIframe.srcdoc = scenePlayerHtml(this.soundValue, this.volumeValue)
+      }
     }
     this.handleVisibility = () => {
+      if (document.hidden) this.onCursorLeave?.()
       if (this.videoElement && this.pauseOnHidden) {
         if (document.hidden) this.videoElement.pause()
         else void this.videoElement.play()?.catch(() => {})
@@ -833,6 +886,53 @@ class BackdropManager {
     this.mask.style.cssText = 'position:absolute;inset:0;'
     this.root.replaceChildren(this.media, this.mask)
     document.body.prepend(this.root)
+    this.ensureCursorForwarding()
+  }
+
+  // Capture host movement without intercepting clicks. Deliver the newest
+  // sample once per animation frame, including the last event of a short drag.
+  ensureCursorForwarding() {
+    if (this.cursorForwardInit || typeof window === 'undefined') return
+    this.cursorForwardInit = true
+    this.onCursorMove = event => {
+      if (document.hidden || (!this.sceneIframe && !this.webIframe)) return
+      this.pendingCursor = { x: event.clientX / Math.max(window.innerWidth, 1),
+        y: event.clientY / Math.max(window.innerHeight, 1) }
+      if (this.cursorFrame !== null) return
+      this.cursorFrame = window.requestAnimationFrame(() => {
+        this.cursorFrame = null
+        const cursor = this.pendingCursor
+        this.pendingCursor = null
+        if (cursor) this.forwardCursor(cursor.x, cursor.y, true)
+      })
+    }
+    this.onCursorLeave = () => {
+      if (this.cursorFrame !== null) window.cancelAnimationFrame(this.cursorFrame)
+      this.cursorFrame = null
+      this.pendingCursor = null
+      this.forwardCursor(0.5, 0.5, false)
+    }
+    window.addEventListener('mousemove', this.onCursorMove, { passive: true, capture: true })
+    window.addEventListener('mouseleave', this.onCursorLeave)
+    document.addEventListener('mouseleave', this.onCursorLeave)
+    window.addEventListener('blur', this.onCursorLeave)
+  }
+
+  forwardCursor(x, y, active) {
+    const position = frame => {
+      const rect = frame?.getBoundingClientRect?.()
+      if (!rect?.width || !rect?.height) return { x, y, active }
+      const px = (x * window.innerWidth - rect.left) / rect.width
+      const py = (y * window.innerHeight - rect.top) / rect.height
+      return { x: Math.min(1, Math.max(0, px)), y: Math.min(1, Math.max(0, py)),
+        active: active && px >= 0 && px <= 1 && py >= 0 && py <= 1 }
+    }
+    try {
+      this.sceneIframe?.contentWindow?.postMessage({ type: 'dsh-set-cursor', ...position(this.sceneIframe) }, '*')
+    } catch { /* The scene frame may still be loading. */ }
+    try {
+      this.webIframe?.contentWindow?.postMessage({ type: 'hermes-we-cursor', ...position(this.webIframe) }, '*')
+    } catch { /* The web frame may still be loading. */ }
   }
 
   update({ enabled, type = 'image', src, sceneFrame = null, webPreview = null, blur = 0, occlusion = 35,
@@ -875,9 +975,11 @@ class BackdropManager {
       return true
     }
     this.currentKey = key
-    this.releaseSceneUrls()
-    this.sceneIframe = null
+    this.lastMediaIssue = null
+    this.releaseMedia()
+    this.sceneReloads = 0
     this.sceneManifest = null
+    this.webIframe = null
     this.media.replaceChildren()
     this.media.style.backgroundImage = 'none'
     if (type === 'scene') {
@@ -899,7 +1001,8 @@ class BackdropManager {
       this.videoElement = video
       this.ensurePlaybackListeners()
       if (this.modeValue === 'frame') {
-        video.addEventListener('loadeddata', () => {
+      video.addEventListener('loadeddata', () => {
+          if (this.currentKey !== key || this.videoElement !== video) return
           try {
             const canvas = document.createElement('canvas')
             const scale = Math.min(1, 1920 / Math.max(video.videoWidth, video.videoHeight))
@@ -911,7 +1014,7 @@ class BackdropManager {
             image.style.cssText = `width:100%;height:100%;object-fit:${this.fitValue};display:block;`
             if (this.currentKey === key) this.media.replaceChildren(image)
           } catch { /* The live video remains visible if capture is blocked by CORS. */ }
-          finally { video.pause(); this.videoElement = null }
+          finally { video.pause(); if (this.videoElement === video) this.videoElement = null }
         }, { once: true })
       }
       this.media.appendChild(video)
@@ -922,7 +1025,7 @@ class BackdropManager {
       let triedBridge = false
       image.onerror = async () => {
         const local = /^[a-zA-Z]:[\\/]/.test(src) || /^file:\/\/\//i.test(src)
-        const bridge = typeof window !== 'undefined' ? (window.zcodeDesktop || window.hermesDesktop) : null
+        const bridge = getLocalBridge()
         if (!triedBridge && local && bridge?.readFileDataUrl) {
           triedBridge = true
           try {
@@ -937,13 +1040,15 @@ class BackdropManager {
         this.fail(key)
       }
       image.src = safeSource
-      image.style.cssText = 'width:100%;height:100%;object-fit:cover;display:block;'
+      image.style.cssText = `width:100%;height:100%;object-fit:${this.fitValue};display:block;`
       this.media.appendChild(image)
     }
     return true
   }
 
   syncMediaOptions(type, options) {
+    const image = this.media?.querySelector('img')
+    if (image) image.style.objectFit = options.fit
     const video = this.media?.querySelector('video')
     if (video) {
       video.style.objectFit = options.fit
@@ -978,7 +1083,7 @@ class BackdropManager {
         image.onload = null
       } catch { /* Keep the source preview as a fallback. */ }
     }
-    const bridge = typeof window !== 'undefined' ? window.hermesDesktop : null
+    const bridge = getLocalBridge()
     const load = async () => {
       try {
         const data = await bridge.readFileDataUrl(framePath)
@@ -995,10 +1100,12 @@ class BackdropManager {
   }
 
   async showScene(key, manifestPath) {
-    const bridge = typeof window !== 'undefined' ? window.hermesDesktop : null
+    const bridge = getLocalBridge()
+    const load = new AbortController()
+    this.sceneLoad = load
     try {
-      const scene = await loadSceneManifest(bridge, manifestPath)
-      if (this.currentKey !== key) {
+      const scene = await loadSceneManifest(bridge, manifestPath, this.prepareScene, load.signal)
+      if (load.signal.aborted || this.currentKey !== key) {
         scene.objectUrls.forEach(url => URL.revokeObjectURL(url))
         return
       }
@@ -1009,6 +1116,7 @@ class BackdropManager {
       frame.setAttribute('aria-hidden', 'true')
       frame.style.cssText = `position:absolute;inset:0;width:100%;height:100%;border:0;pointer-events:none;object-fit:${this.fitValue};`
       frame.onload = () => {
+        if (this.sceneIframe !== frame) return
         frame.contentWindow?.postMessage({ type: 'hermes-scene-manifest', manifest: scene.manifest }, '*')
         frame.contentWindow?.postMessage({ type: 'dsh-set-fit', fit: this.fitValue }, '*')
         frame.contentWindow?.postMessage({ type: 'dsh-set-pause', paused: document.hidden && this.pauseOnHidden }, '*')
@@ -1022,10 +1130,13 @@ class BackdropManager {
       frame.srcdoc = scenePlayerHtml(this.soundValue, this.volumeValue)
       this.media.appendChild(frame)
       this.onVisibilityChange?.()
-    } catch {
+    } catch (error) {
       // A decoded full-resolution frame remains visible if the WebGL scene
       // cannot be prepared by this Hermes build.
-      if (this.currentKey === key && !this.media.querySelector('img')) this.fail(key)
+      if (!load.signal.aborted && this.currentKey === key) this.reportFallback(error)
+      if (!load.signal.aborted && this.currentKey === key && !this.media?.querySelector('img')) this.fail(key)
+    } finally {
+      if (this.sceneLoad === load) this.sceneLoad = null
     }
   }
 
@@ -1037,7 +1148,7 @@ class BackdropManager {
   }
 
   async showWeb(key, fileUrl, sourcePath) {
-    const bridge = typeof window !== 'undefined' ? window.hermesDesktop : null
+    const bridge = getLocalBridge()
     try {
       const html = await loadWebWallpaper(bridge, sourcePath)
       if (this.currentKey !== key) return
@@ -1047,6 +1158,7 @@ class BackdropManager {
       frame.style.cssText = 'position:absolute;inset:0;width:100%;height:100%;border:0;pointer-events:none;'
       frame.style.objectFit = this.fitValue
       frame.srcdoc = html
+      this.webIframe = frame
       this.media.appendChild(frame)
     } catch {
       if (this.currentKey === key && !this.media.querySelector('img')) this.fail(key)
@@ -1062,15 +1174,34 @@ class BackdropManager {
 
   hide() {
     if (this.root) this.root.style.display = 'none'
-    const video = this.media?.querySelector('video')
-    if (video) video.pause()
-    this.videoElement = null
+    this.releaseMedia()
     this.media?.replaceChildren()
     if (this.media) this.media.style.backgroundImage = 'none'
     this.currentKey = null
     this.sceneIframe = null
     this.sceneManifest = null
+    this.webIframe = null
+  }
+
+  stopScene() {
+    try { this.sceneIframe?.contentWindow?.__hermesSceneDispose?.() } catch { /* Frame is already unloaded. */ }
+    this.sceneIframe?.remove?.()
+    this.sceneIframe = null
     this.releaseSceneUrls()
+  }
+
+  releaseMedia() {
+    this.sceneLoad?.abort()
+    this.sceneLoad = null
+    this.onCursorLeave?.()
+    const video = this.videoElement || this.media?.querySelector('video')
+    if (video) {
+      video.pause()
+      video.removeAttribute('src')
+      video.load()
+    }
+    this.videoElement = null
+    this.stopScene()
   }
 
   releaseSceneUrls() {
@@ -1078,7 +1209,22 @@ class BackdropManager {
     this.sceneUrls = []
   }
 
+  reportFallback(error) {
+    this.lastMediaIssue = { fallback: true, code: error?.code || 'SCENE_RENDER_FAILED' }
+    if (typeof window !== 'undefined') window.dispatchEvent(new CustomEvent('zcode-skins:wallpaper-error', { detail: this.lastMediaIssue }))
+  }
+
   destroy() {
+    if (this.cursorForwardInit) {
+      window.removeEventListener('mousemove', this.onCursorMove, { capture: true })
+      window.removeEventListener('mouseleave', this.onCursorLeave)
+      document.removeEventListener('mouseleave', this.onCursorLeave)
+      window.removeEventListener('blur', this.onCursorLeave)
+      if (this.cursorFrame !== null) window.cancelAnimationFrame(this.cursorFrame)
+      this.cursorFrame = null
+      this.pendingCursor = null
+      this.cursorForwardInit = false
+    }
     this.hide()
     this.root?.remove()
     this.root = null
@@ -1096,486 +1242,151 @@ class BackdropManager {
 
 // ─── Submodule: Glassmorphism Controller ──────────────────────
 
-/** Only changes the shell surfaces needed to show a wallpaper. */
+/** Paint each ZCode material once, on its native surface rather than its portal. */
 const STYLE_ID = 'zcode-skins-runtime-css'
-// PaneBody and ZCode layout selectors
-const PANE_SURFACE = '[class*="bg-(--ui-editor-surface-background)"], [class*="bg-(--color-background)"], #root > div'
-const NESTED_SURFACES = ':is([data-chat-surface], [data-slot="sidebar"], [data-panel-header], [class*="bg-(--ui-editor-surface-background)"], [class*="bg-(--ui-sidebar-surface-background)"], [class*="bg-(--ui-chat-surface-background)"], aside, nav, [class*="sidebar"])'
-const PROTECTED_SURFACES = ':not(:where([data-glass-opaque], [data-glass-opaque] *, [data-glass-raised], [data-glass-raised] *, [data-overlay-surface], [data-overlay-surface] *, [data-floating-pane], [data-floating-pane] *, [data-remote-screen], [data-remote-screen] *, [data-radix-popper-content-wrapper] *, [role="dialog"], [role="dialog"] *, [role="menu"], [role="menu"] *, [role="listbox"], [role="listbox"] *))'
-const FLOATING_SURFACES = ':is([data-slot="dropdown-menu-content"], [data-slot="dropdown-menu-sub-content"], [data-slot="context-menu-content"], [data-slot="context-menu-sub-content"], [data-slot="select-content"], [data-slot="popover-content"], [data-slot="dialog-content"], [data-slot="alert-dialog-content"], [data-slot="sheet-content"], [data-slot="tooltip-content"], .tooltip-bubble, [role="menu"], [role="listbox"], [data-radix-popper-content-wrapper] > div)'
+const SCOPE = ':root[data-zcode-skins-active="true"]'
+const MENUS = ':is([data-slot="dropdown-menu-content"], [data-slot="dropdown-menu-sub-content"], [data-slot="context-menu-content"], [data-slot="context-menu-sub-content"], [data-slot="select-content"], [data-slot="popover-content"], [data-slot="tooltip-content"], [role="menu"], [role="listbox"])'
+const DIALOGS = ':is([data-slot="dialog-content"], [data-slot="alert-dialog-content"], [data-slot="sheet-content"], [role="dialog"])'
+const COMPOSER = '.chat-composer-input-surface form > .bg-input'
+const CAPSULES = ':is(aside[data-display-mode], header .bg-input, header div[class*="rounded-"][class*="border"])'
+const PROTECTED = `:where(${MENUS}, ${MENUS} *, ${DIALOGS}, ${DIALOGS} *, [data-radix-popper-content-wrapper], [data-radix-popper-content-wrapper] *, .chat-composer-input-surface, .chat-composer-input-surface *, aside[data-display-mode], aside[data-display-mode] *, [data-remote-screen], [data-remote-screen] *)`
+const STRUCTURAL = `:is(aside, nav, .bg-background, .bg-sidebar):not(${PROTECTED})`
+const CARDS = `:is(section.bg-card, div.bg-card, pre.bg-card, [data-slot="card"]):not(${PROTECTED})`
 
-/**
- * xterm's own color parser (css.toColor) only accepts hex and comma-form
- * rgba() for translucent colors; a color-mix() chain serializes as
- * "color(srgb … / a)", which falls through to the silent #000000 fallback and
- * paints the WebGL canvas pitch black. Structural tints stay CSS color-mix
- * chains, but the terminal surface — the one value a canvas reads back as a
- * string — must be resolved here into a literal.
- */
 function parseSerializedColor(text) {
   if (typeof text !== 'string') return null
   let match = text.match(/^color\((?:srgb|srgb-linear) ([\d.]+) ([\d.]+) ([\d.]+)(?: \/ ([\d.]+))?\)$/)
-  if (match) {
-    const channel = value => Math.round(Number(value) * 255)
-    return {
-      r: channel(match[1]), g: channel(match[2]), b: channel(match[3]),
-      a: match[4] === undefined ? 1 : Number(match[4])
-    }
-  }
+  if (match) return { r: Math.round(Number(match[1]) * 255), g: Math.round(Number(match[2]) * 255), b: Math.round(Number(match[3]) * 255), a: match[4] === undefined ? 1 : Number(match[4]) }
   match = text.match(/^rgba?\(([\d.]+),?\s*([\d.]+),?\s*([\d.]+)(?:\s*[,/]\s*([\d.]+))?\)$/)
-  if (match) {
-    return {
-      r: Math.round(Number(match[1])), g: Math.round(Number(match[2])), b: Math.round(Number(match[3])),
-      a: match[4] === undefined ? 1 : Number(match[4])
-    }
-  }
+  if (match) return { r: Math.round(Number(match[1])), g: Math.round(Number(match[2])), b: Math.round(Number(match[3])), a: match[4] === undefined ? 1 : Number(match[4]) }
   match = text.match(/^#([0-9a-f]{6})$/i)
-  if (match) {
-    const value = parseInt(match[1], 16)
-    return { r: (value >> 16) & 255, g: (value >> 8) & 255, b: value & 255, a: 1 }
-  }
-  return null
+  if (!match) return null
+  const value = parseInt(match[1], 16)
+  return { r: (value >> 16) & 255, g: (value >> 8) & 255, b: value & 255, a: 1 }
 }
 
 class GlassController {
-  constructor() {
-    this.styleEl = null
-    this.refitObserver = null
-    this.refitTargets = new Set()
-    this.refitQueued = false
-  }
+  constructor() { this.styleEl = null }
 
-  update({ enabled, glassTransparency = 10, bubbleOpacity = 100, composerFrost = 10, surfaceFrost = 8 }) {
+  update({ enabled, glassTransparency = 10, composerTransparency = 65, capsuleTransparency = 65,
+    cardTransparency = 65, bubbleOpacity = 100, composerFrost = 10, surfaceFrost = 8 }) {
     if (typeof document === 'undefined') return
     const root = document.documentElement
-    if (!enabled) {
-      root.removeAttribute('data-hermes-skins-active')
-      const styleEl = this.styleEl || document.getElementById(STYLE_ID)
-      styleEl?.remove()
-      this.styleEl = null
-      this.releaseRefitWatcher()
-      return
-    }
+    if (!enabled) { this.destroy(); return }
+    const pct = (value, fallback) => Number.isFinite(Number(value)) ? Math.min(100, Math.max(0, Number(value))) : fallback
+    const keep = 100 - pct(glassTransparency, 10)
+    const blur = value => value > 0 ? `blur(${Math.min(20, value)}px)` : 'none'
+    const frost = blur(pct(surfaceFrost, 8))
+    const composer = blur(pct(composerFrost, 10))
     if (!this.styleEl || !document.head.contains(this.styleEl)) {
       this.styleEl = document.getElementById(STYLE_ID) || document.createElement('style')
       this.styleEl.id = STYLE_ID
-      this.styleEl.dataset.plugin = 'hermes-skins'
+      this.styleEl.dataset.plugin = 'zcode-skins'
       if (!this.styleEl.isConnected) document.head.appendChild(this.styleEl)
     }
-
-    // Material contract (see src/engine/config.js PARAM_RANGES): one lever,
-    // one keep value, everywhere. No hidden floors or ceilings — panelGlass 0
-    // paints the panels in their full theme fill, panelGlass 100 leaves the
-    // structural fills fully transparent.
-    const pct = (value, fallback) => {
-      const n = Number(value)
-      return Number.isFinite(n) ? Math.min(100, Math.max(0, n)) : fallback
-    }
-    const keep = 100 - pct(glassTransparency, 10)
-    // Floating text sits over other text, so it retains a readable veil while
-    // still revealing the wallpaper. It follows the main lever above 70% fill.
-    const floatingKeep = Math.max(keep, 70)
-    const overlayKeep = Math.max(keep, 74)
-    const bubbleKeep = pct(bubbleOpacity, 100)
-    const composerBlur = Math.min(20, Math.max(0, pct(composerFrost, 10)))
-    const surfaceBlur = Math.min(20, Math.max(0, pct(surfaceFrost, 8)))
-
-    // Frosted glass samples the wallpaper behind a surface; blur(0) would still
-    // promote a composited layer, so the frost vars stay `none` when off.
-    const frost = surfaceBlur > 0 ? `blur(${surfaceBlur}px)` : 'none'
-    const overlayFrost = surfaceBlur > 0 ? `blur(${Math.max(16, surfaceBlur * 2)}px) saturate(180%)` : 'none'
-    const overlayScrimFrost = surfaceBlur > 0 ? `blur(${Math.max(10, surfaceBlur)}px)` : 'none'
-    const composerFrostCss = composerBlur > 0 ? `blur(${composerBlur}px)` : 'none'
-
-    // Terminal: xterm resolves --ui-terminal-surface-background to a concrete
-    // color for its WebGL canvas, and the persistent host paints the same var
-    // inline. With the host default (allowTransparency: false) an alpha color
-    // would paint opaque glyph-cell plates over a translucent viewport, so the
-    // var is pinned to the opaque chrome mix (the host's own glass mode does
-    // exactly this) and the terminal reads solid — no fake blend-mode
-    // transparency. Hosts patched by patches/hermes-desktop-terminal-alpha.patch
-    // advertise via the data-hermes-terminal-alpha attribute and get a real
-    // translucent mix. That mix must be a comma-form rgba() literal resolved
-    // through a live probe: the raw color-mix chain would reach xterm as
-    // "color(srgb …)" and paint the canvas black, and probing --ui-bg-chrome
-    // keeps the value tracking the official light/dark mode on every sync.
-    const terminalAlpha = root.dataset?.hermesTerminalAlpha === 'true'
-    let terminalSurface = 'var(--ui-bg-chrome)'
-    if (terminalAlpha && document.body) {
-      const probe = document.createElement('span')
-      probe.style.cssText = 'position:absolute;visibility:hidden;pointer-events:none;background-color:var(--ui-bg-chrome);'
-      document.body.appendChild(probe)
-      const base = parseSerializedColor(getComputedStyle(probe).backgroundColor)
-      probe.remove()
-      if (base) terminalSurface = `rgba(${base.r}, ${base.g}, ${base.b}, ${keep / 100})`
-    }
-
     root.setAttribute('data-zcode-skins-active', 'true')
-    root.setAttribute('data-hermes-skins-active', 'true')
-    this.styleEl.textContent = `
-      :root[data-zcode-skins-active="true"],
-      :root[data-hermes-skins-active="true"] {
+    root.removeAttribute('data-hermes-skins-active')
+    const css = `
+      ${SCOPE} {
         --zcode-skins-keep: ${keep}%;
-        --hermes-skins-keep: ${keep}%;
-        --zcode-skins-chrome-tint: color-mix(in srgb, var(--color-background, var(--ui-bg-chrome, #18181b)) var(--zcode-skins-keep), transparent);
-        --hermes-skins-chrome-tint: var(--zcode-skins-chrome-tint);
-        --zcode-skins-sidebar-tint: var(--zcode-skins-chrome-tint);
-        --hermes-skins-sidebar-tint: var(--zcode-skins-chrome-tint);
-        --zcode-skins-editor-tint: var(--zcode-skins-chrome-tint);
-        --hermes-skins-editor-tint: var(--zcode-skins-chrome-tint);
-        --zcode-skins-floating-tint: color-mix(in srgb, var(--color-card, var(--ui-bg-chrome, #27272a)) ${floatingKeep}%, transparent);
-        --hermes-skins-floating-tint: var(--zcode-skins-floating-tint);
-        --zcode-skins-overlay-tint: color-mix(in srgb, var(--color-card, var(--ui-bg-chrome, #18181b)) ${overlayKeep}%, transparent);
-        --hermes-skins-overlay-tint: var(--zcode-skins-overlay-tint);
-        --zcode-skins-overlay-sidebar-tint: color-mix(in srgb, var(--color-background, var(--ui-bg-sidebar, #121214)) ${Math.max(25, overlayKeep - 40)}%, transparent);
-        --hermes-skins-overlay-sidebar-tint: var(--zcode-skins-overlay-sidebar-tint);
+        --zcode-skins-chrome-tint: color-mix(in srgb, var(--color-background, #18181b) ${keep}%, transparent);
+        --zcode-skins-composer-tint: color-mix(in srgb, var(--color-card, var(--color-background, #18181b)) ${100 - pct(composerTransparency, 65)}%, transparent);
+        --zcode-skins-capsule-tint: color-mix(in srgb, var(--color-card, var(--color-background, #18181b)) ${100 - pct(capsuleTransparency, 65)}%, transparent);
+        --zcode-skins-card-tint: color-mix(in srgb, var(--color-card, var(--color-background, #18181b)) ${100 - pct(cardTransparency, 65)}%, transparent);
+        --zcode-skins-floating-tint: color-mix(in srgb, var(--color-menu, var(--color-popover, var(--color-background, #18181b))) ${Math.max(keep, 70)}%, transparent);
+        --zcode-skins-overlay-tint: color-mix(in srgb, var(--color-card, var(--color-background, #18181b)) ${Math.max(keep, 74)}%, transparent);
         --zcode-skins-frost: ${frost};
-        --hermes-skins-frost: ${frost};
-        --zcode-skins-overlay-frost: ${overlayFrost};
-        --hermes-skins-overlay-frost: ${overlayFrost};
-        --zcode-skins-overlay-scrim-frost: ${overlayScrimFrost};
-        --hermes-skins-overlay-scrim-frost: ${overlayScrimFrost};
-        --zcode-skins-composer-frost: ${composerFrostCss};
-        --hermes-skins-composer-frost: ${composerFrostCss};
-        --user-bubble-keep: ${bubbleKeep}% !important;
+        --zcode-skins-composer-frost: ${composer};
+        --user-bubble-keep: ${pct(bubbleOpacity, 100)}%;
         --color-background-alt: var(--zcode-skins-chrome-tint);
-        --ui-chat-surface-background: var(--hermes-skins-chrome-tint);
-        --ui-sidebar-surface-background: var(--hermes-skins-sidebar-tint);
-        --ui-editor-surface-background: var(--hermes-skins-editor-tint);
-        --ui-bg-editor: var(--hermes-skins-editor-tint);
-        --ui-bg-elevated: var(--hermes-skins-floating-tint);
-        --dt-popover: var(--hermes-skins-floating-tint);
-        --dt-background: var(--hermes-skins-chrome-tint);
-        --ui-terminal-surface-background: ${terminalSurface};
       }
-      /* Clean background for ZCode & Electron root surfaces */
-      :root[data-zcode-skins-active="true"] body,
-      :root[data-zcode-skins-active="true"] #root,
-      :root[data-hermes-skins-active="true"] body {
-        background: transparent !important;
+      ${SCOPE} body, ${SCOPE} #root, ${SCOPE} #root > div, ${SCOPE} .bg-background-win-alt {
+        background-color: transparent !important;
+        backdrop-filter: none !important;
+        -webkit-backdrop-filter: none !important;
       }
-      /* ZCode structural panels & sidebars translucency */
-      :root[data-zcode-skins-active="true"] aside,
-      :root[data-zcode-skins-active="true"] nav,
-      :root[data-zcode-skins-active="true"] [class*="bg-(--color-background)"],
-      :root[data-zcode-skins-active="true"] [class*="bg-neutral-900"],
-      :root[data-zcode-skins-active="true"] [class*="bg-neutral-950"],
-      :root[data-zcode-skins-active="true"] [class*="bg-zinc-900"],
-      :root[data-zcode-skins-active="true"] [class*="bg-zinc-950"],
-      :root[data-zcode-skins-active="true"] [class*="bg-background"],
-      :root[data-zcode-skins-active="true"] [class*="bg-sidebar"] {
+      ${SCOPE} #root { position: relative; z-index: 1; }
+      ${SCOPE} [data-v4-user-input-bubble] {
+        background-color: color-mix(in srgb, var(--color-surface, rgba(13, 13, 13, 0.03)) ${pct(bubbleOpacity, 100)}%, transparent) !important;
+      }
+      ${SCOPE} ${STRUCTURAL} {
         background-color: var(--zcode-skins-chrome-tint) !important;
         backdrop-filter: var(--zcode-skins-frost);
         -webkit-backdrop-filter: var(--zcode-skins-frost);
       }
-      /* ZCode input card / composer frosted glass */
-      :root[data-zcode-skins-active="true"] textarea,
-      :root[data-zcode-skins-active="true"] input[type="text"],
-      :root[data-zcode-skins-active="true"] [class*="rounded-2xl"][class*="border"],
-      :root[data-zcode-skins-active="true"] [class*="rounded-xl"][class*="border"] {
-        backdrop-filter: var(--zcode-skins-composer-frost);
-        -webkit-backdrop-filter: var(--zcode-skins-composer-frost);
-      }
-      /* Surfaces that mask sibling content keep their real paint (host
-         contract — a see-through mask reads as text bleeding through text). */
-      :root[data-hermes-skins-active="true"] [data-glass-opaque] {
-        --ui-chat-surface-background: var(--ui-bg-chrome);
-        --ui-editor-surface-background: var(--ui-bg-chrome);
-        --ui-sidebar-surface-background: var(--ui-bg-sidebar);
-        --ui-bg-editor: var(--ui-bg-chrome);
-        --dt-background: var(--ui-bg-chrome);
-      }
-      /* The full-window painters between <body> and every surface step aside
-         so the wallpaper layer is the only backdrop. The shell also opts out
-         of the shared frost below: it spans the whole window, and a
-         backdrop-filter here would blur the wallpaper itself instead of a
-         surface above it. !important — the shell paints the chrome token
-         through the same utility class the frost rule matches on, and the
-         two selectors tie at (0,3,0). */
-      :root[data-hermes-skins-active="true"] [data-contrib-shell] {
-        position: relative;
-        z-index: 1;
+      ${SCOPE} ${STRUCTURAL} ${STRUCTURAL} {
         background-color: transparent !important;
         backdrop-filter: none !important;
         -webkit-backdrop-filter: none !important;
       }
-      :root[data-hermes-skins-active="true"] [data-slot="sidebar-wrapper"] {
+      ${SCOPE} ${CARDS} {
+        background-color: var(--zcode-skins-card-tint) !important;
+        backdrop-filter: var(--zcode-skins-frost);
+        -webkit-backdrop-filter: var(--zcode-skins-frost);
+      }
+      ${SCOPE} ${CARDS} ${CARDS} {
         background-color: transparent !important;
         backdrop-filter: none !important;
         -webkit-backdrop-filter: none !important;
       }
-      /* ChatRuntimeBoundary's message viewport repeats the outer chat fill and
-         spans the whole chat column: restating either tint or frost here would
-         stack a second veil / blur over everything inside. */
-      :root[data-hermes-skins-active="true"] [data-chat-surface] [data-slot="composer-bounds"] {
-        background-color: transparent !important;
-        backdrop-filter: none;
-        -webkit-backdrop-filter: none;
+      ${SCOPE} code[class*="bg-markdown-inline-code"]:not(pre code) {
+        background-color: var(--zcode-skins-card-tint) !important;
       }
-      /* Shared frost: every surface that paints one of the structural tokens
-         through a Tailwind utility gets exactly one blur. Covers the chat
-         column, the right file/review columns, collapsed rails, pane headers
-         and the status bar — the surfaces that used to frost only on some
-         panes, which read as a different material on every region. None of
-         them contain fixed-position descendants (verified against the running
-         host: tooltips, popovers and floating composers portal out), so a
-         backdrop-filter cannot re-anchor anything. bg-background surfaces
-         (segmented-control active pills and friends) join the same treatment:
-         a frosted pill keeps its selected-state affordance through the blur
-         even at low keeps. */
-      :root[data-hermes-skins-active="true"] [class*="bg-(--ui-sidebar-surface-background)"],
-      :root[data-hermes-skins-active="true"] [class*="bg-(--ui-chat-surface-background)"],
-      :root[data-hermes-skins-active="true"] [class*="bg-(--ui-editor-surface-background)"],
-      :root[data-hermes-skins-active="true"] [class*="bg-(--ui-bg-chrome)"],
-      :root[data-hermes-skins-active="true"] [class*="bg-background"] {
-        backdrop-filter: var(--hermes-skins-frost);
-        -webkit-backdrop-filter: var(--hermes-skins-frost);
+      ${SCOPE} ${CAPSULES} {
+        background-color: var(--zcode-skins-capsule-tint) !important;
+        backdrop-filter: var(--zcode-skins-frost) !important;
+        -webkit-backdrop-filter: var(--zcode-skins-frost) !important;
       }
-      /* Status bar chips (gateway status, session info) repaint the bar's own
-         surface token on top of it — a 12% veil becomes ~23% patches inside
-         the strip. The bar is the single fill; chips stay transparent. */
-      :root[data-hermes-skins-active="true"] [data-slot="statusbar"] [class*="bg-(--ui-sidebar-surface-background)"],
-      :root[data-hermes-skins-active="true"] [data-slot="statusbar"] [class*="bg-(--ui-bg-chrome)"] {
-        background-color: transparent !important;
-        backdrop-filter: none;
-        -webkit-backdrop-filter: none;
+      ${SCOPE} ${COMPOSER} {
+        background-color: var(--zcode-skins-composer-tint) !important;
+        backdrop-filter: var(--zcode-skins-composer-frost) !important;
+        -webkit-backdrop-filter: var(--zcode-skins-composer-frost) !important;
       }
-      /* Structural panels that paint with opaque Tailwind utilities (bg-sidebar
-         & co. resolve to fixed theme colors, not the surface tokens) need their
-         fill restated. Everything routes through the same tint vars, so
-         light/dark only changes the theme seed underneath. */
-      :root[data-hermes-skins-active="true"] [data-slot="sidebar"] {
-        background-color: var(--hermes-skins-sidebar-tint) !important;
-        backdrop-filter: var(--hermes-skins-frost);
-        -webkit-backdrop-filter: var(--hermes-skins-frost);
-      }
-      /* Frameless-window title bar: the popout shell declares --titlebar-height
-         and its aria-hidden first child paints the opaque chrome strip. */
-      :root[data-hermes-skins-active="true"] [data-contrib-shell][style*="--titlebar-height"] > div[aria-hidden="true"] {
-        background-color: var(--hermes-skins-chrome-tint) !important;
-        backdrop-filter: var(--hermes-skins-frost);
-        -webkit-backdrop-filter: var(--hermes-skins-frost);
-      }
-      /* Token-painted structural surfaces (status bar, pane headers) restated
-         for builds that paint them without the utility class; the frost is the
-         shared one. Painting the tint twice on one box would stack two
-         translucent fills, so these stay the only extra tint rules. */
-      :root[data-hermes-skins-active="true"] [data-slot="statusbar"],
-      :root[data-hermes-skins-active="true"] [data-panel-header] {
-        /* Native Glass sidebar scope sets an opaque token on the footer.
-           Override it locally as well as painting the outer surface, so
-           descendants cannot inherit a different material. */
-        --ui-sidebar-surface-background: var(--hermes-skins-sidebar-tint) !important;
-        background-color: var(--hermes-skins-chrome-tint) !important;
-        backdrop-filter: var(--hermes-skins-frost);
-        -webkit-backdrop-filter: var(--hermes-skins-frost);
-      }
-      /* Pane tab strip: the pane header behind it is the single structural
-         fill. The strip's own utility fill — and the inactive-tab fill it
-         publishes through --pane-tab-strip-bg — would stack a second (active
-         tabs a third) veil on the same box and read as a brighter, harder top
-         bar. The active underline and hover darken stay as the affordances. */
-      :root[data-hermes-skins-active="true"] [data-panel-header] [class*="group/pane-header"] {
-        background-color: transparent !important;
-        --pane-tab-strip-bg: transparent;
-        backdrop-filter: none;
-        -webkit-backdrop-filter: none;
-      }
-      /* Plugin SDK cards use bg-card/bg-background, not Hermes' surface
-         tokens. These are the large white plates visible in Skin Center.
-         Scope the fix to our marked cards so other apps' readability is not
-         changed; nested wallpaper thumbnails do not stack another veil. */
-      :root[data-hermes-skins-active="true"] [data-hermes-skins-surface] {
-        background-color: var(--hermes-skins-editor-tint) !important;
-        backdrop-filter: var(--hermes-skins-frost);
-        -webkit-backdrop-filter: var(--hermes-skins-frost);
-      }
-      :root[data-hermes-skins-active="true"] [data-hermes-skins-surface] [data-hermes-skins-surface] {
-        background-color: transparent !important;
-        backdrop-filter: none;
-        -webkit-backdrop-filter: none;
-      }
-      /* A plugin page already sits on the host's structural pane fill. Its
-         cards and heading define groups through borders, not a second veil.
-         Limit this to our page; raised menus and opaque masks keep their paint. */
-      :root[data-hermes-skins-active="true"] [data-hermes-skins-page] [data-hermes-skins-surface],
-      :root[data-hermes-skins-active="true"] [data-hermes-skins-page] > header,
-      :root[data-hermes-skins-active="true"] [data-chat-surface] [data-panel-header],
-      :root[data-hermes-skins-active="true"] [data-slot="sidebar"] [data-panel-header] {
-        background-color: transparent !important;
-        backdrop-filter: none;
-        -webkit-backdrop-filter: none;
-      }
-      /* A pane body already owns the tint. Clearing only plugin cards missed
-         the real app: a conversation/sidebar inside PaneBody painted it again
-         (20% + 20% = 36%), while the footer stayed at 20%. Apply the same rule
-         to all structural descendants, including nested file views. Masks and
-         raised/portaled interaction layers remain independent painters. */
-      :root[data-hermes-skins-active="true"] ${PANE_SURFACE} ${NESTED_SURFACES}${PROTECTED_SURFACES} {
+      ${SCOPE} .chat-composer-input-surface, ${SCOPE} .chat-composer-input-surface form,
+      ${SCOPE} ${COMPOSER} :is([role="textbox"], textarea) {
         background-color: transparent !important;
         backdrop-filter: none !important;
         -webkit-backdrop-filter: none !important;
       }
-      /* Shared floating material: SDK menus use hard-coded 92/96% mixes and
-         some status-bar panels use bg-popover. Restate the actual outer box,
-         not just the token. Color-category chips, selection highlights and
-         deliberate primary/accent surfaces keep their semantic colors. */
-      :root[data-hermes-skins-active="true"] ${FLOATING_SURFACES}:not([class*="dt-primary-solid"], [class*="bg-black"]) {
-        --popover-surface: var(--hermes-skins-floating-tint) !important;
-        --dt-popover: var(--hermes-skins-floating-tint);
-        --dt-muted-foreground: var(--ui-text-primary);
-        background-color: var(--hermes-skins-floating-tint) !important;
-        backdrop-filter: var(--hermes-skins-frost) !important;
-        -webkit-backdrop-filter: var(--hermes-skins-frost) !important;
-        color: var(--ui-text-primary) !important;
+      /* Portals only position their children; painting them creates square corners. */
+      ${SCOPE} [data-radix-popper-content-wrapper] {
+        background: transparent !important;
+        backdrop-filter: none !important;
+        -webkit-backdrop-filter: none !important;
+        box-shadow: none !important;
       }
-      /* A nested cmdk list/card belongs to its popover; it must not paint a
-         second veil. Arrow shapes still receive --popover-surface separately. */
-      :root[data-hermes-skins-active="true"] ${FLOATING_SURFACES} :is([data-slot="command"], [class~="bg-popover"], [class~="bg-card"], [class~="bg-background"]):not(${FLOATING_SURFACES}) {
+      ${SCOPE} ${MENUS} {
+        background-color: var(--zcode-skins-floating-tint) !important;
+        backdrop-filter: var(--zcode-skins-frost) !important;
+        -webkit-backdrop-filter: var(--zcode-skins-frost) !important;
+      }
+      /* Preserve native geometry, focus, hover and independent submenus. */
+      ${SCOPE} ${MENUS} :is(.bg-background, .bg-card, .bg-menu, .bg-popover, .bg-surface, [data-slot="command"]):not(${MENUS}) {
         background-color: transparent !important;
         backdrop-filter: none !important;
         -webkit-backdrop-filter: none !important;
       }
-      :root[data-hermes-skins-active="true"] .tooltip-bubble [data-slot="tooltip-arrow"] {
-        fill: var(--hermes-skins-floating-tint);
+      ${SCOPE} ${MENUS} .bg-menu:not(${MENUS})::after { background-color: transparent !important; }
+      ${SCOPE} ${DIALOGS} {
+        background-color: var(--zcode-skins-overlay-tint) !important;
+        backdrop-filter: var(--zcode-skins-frost) !important;
+        -webkit-backdrop-filter: var(--zcode-skins-frost) !important;
       }
-      /* Overlay modal cards (Settings, Command Center, Profiles) and raised glass surfaces:
-         instead of opaque 94-100% white/black slabs, they join the frosted glass style
-         with clean text readability and wallpaper translucency. */
-      :root[data-hermes-skins-active="true"] [data-overlay-surface] {
-        background-color: color-mix(in srgb, #000 18%, transparent) !important;
-        backdrop-filter: blur(12px) !important;
-        -webkit-backdrop-filter: blur(12px) !important;
-      }
-      :root[data-hermes-skins-active="true"] [data-glass-raised] {
-        --ui-chat-surface-background: var(--hermes-skins-overlay-tint) !important;
-        --ui-sidebar-surface-background: var(--hermes-skins-overlay-sidebar-tint) !important;
-        --ui-editor-surface-background: var(--hermes-skins-overlay-tint) !important;
-        background-color: var(--hermes-skins-overlay-tint) !important;
-        backdrop-filter: blur(20px) saturate(180%) !important;
-        -webkit-backdrop-filter: blur(20px) saturate(180%) !important;
-        box-shadow: 0 16px 40px rgba(0, 0, 0, 0.2), 0 0 0 1px color-mix(in srgb, var(--dt-border) 40%, transparent) !important;
-      }
-      /* Left sidebar in overlay cards: single layer translucency to avoid double-darkening */
-      :root[data-hermes-skins-active="true"] [data-glass-raised] aside,
-      :root[data-hermes-skins-active="true"] [data-glass-raised] [class*="bg-(--ui-sidebar-surface-background)"] {
-        background-color: var(--hermes-skins-overlay-sidebar-tint) !important;
+      ${SCOPE} ${DIALOGS} :is(.bg-card, .bg-background):not(${DIALOGS}, ${MENUS}) {
+        background-color: transparent !important;
         backdrop-filter: none !important;
         -webkit-backdrop-filter: none !important;
-        border-right: 1px solid color-mix(in srgb, var(--ui-stroke-secondary) 50%, transparent) !important;
-      }
-      :root[data-hermes-skins-active="true"] [data-glass-raised] main {
-        background-color: transparent !important;
-      }
-      /* Titlebar pill buttons (like Search) and opaque badges in overlays */
-      :root[data-hermes-skins-active="true"] [data-overlay-surface] [data-glass-opaque] {
-        background-color: color-mix(in srgb, var(--ui-bg-chrome) 60%, transparent) !important;
-        backdrop-filter: blur(8px) !important;
-        -webkit-backdrop-filter: blur(8px) !important;
-        border-color: color-mix(in srgb, var(--ui-stroke-secondary) 60%, transparent) !important;
-      }
-      /* Radix dialogs and floating dialog contents */
-      :root[data-hermes-skins-active="true"] [role="dialog"]:not([data-overlay-surface]),
-      :root[data-hermes-skins-active="true"] [data-slot="dialog-content"] {
-        background-color: var(--hermes-skins-overlay-tint) !important;
-        backdrop-filter: blur(20px) !important;
-        -webkit-backdrop-filter: blur(20px) !important;
-      }
-      /* Terminal surfaces resolve through --ui-terminal-surface-background: the
-         fixed persistent host paints it inline and the xterm canvas paints the
-         resolved theme background, so the plugin never restates the fill here —
-         only the shared frost. On unpatched hosts the var is opaque and the
-         canvas is a solid plate; patched hosts get the translucent literal.
-         Remote-screen sharing must keep its real paint. */
-      :root[data-hermes-skins-active="true"] [data-persistent-terminal],
-      :root[data-hermes-skins-active="true"] [data-terminal]:not([data-remote-screen]) {
-        backdrop-filter: var(--hermes-skins-frost);
-        -webkit-backdrop-filter: var(--hermes-skins-frost);
-      }
-      :root[data-hermes-skins-active="true"] [data-persistent-terminal] :is(.xterm, .xterm-screen, .xterm-viewport),
-      :root[data-hermes-skins-active="true"] [data-terminal]:not([data-remote-screen]) :is(.xterm, .xterm-screen, .xterm-viewport) {
-        background-color: transparent !important;
-      }
-      ${terminalAlpha ? `
-      /* xterm's alpha canvas owns the tint. Its two outer wrappers must not
-         paint the same tint again or a 45% fill becomes an 83% solid plate. */
-      :root[data-hermes-skins-active="true"] [data-persistent-terminal],
-      :root[data-hermes-skins-active="true"] [data-terminal]:not([data-remote-screen]) {
-        background-color: transparent !important;
-      }` : ''}
-      /* Composer: the fill joins the structural keep (one lever), and the
-         frost sits ON the composer surface itself — backdrop-filter never
-         touches an element's own content, so placeholder and typed text stay
-         sharp while the wallpaper shows through the blur. The previous fixed
-         overlay layer competed in the root stacking context at a positive
-         z-index and frosted the card and its text along with everything else;
-         it is gone. The host composer has no fixed-position descendants
-         (completion drawers are absolute, tooltips portal out), so the filter
-         cannot re-anchor anything. */
-      :root[data-hermes-skins-active="true"] [data-slot="composer-root"] {
-        --composer-fill: color-mix(in srgb, var(--ui-bg-chrome) var(--hermes-skins-keep), transparent);
-      }
-      :root[data-hermes-skins-active="true"] [data-hud-shell] [data-slot="composer-root"] {
-        /* HUD mode pins an opaque dock fill so its overlay bar and everything
-           docked to it stay readable — keep the host's intent. */
-        --composer-fill: var(--dt-card);
-      }
-      :root[data-hermes-skins-active="true"] [data-slot="composer-surface"] {
-        backdrop-filter: var(--hermes-skins-composer-frost);
-        -webkit-backdrop-filter: var(--hermes-skins-composer-frost);
       }
     `
-    this.syncTerminalRefitWatcher()
-  }
-
-  /** xterm's WebGL canvas keeps its last fitted size; when a terminal pane
-   *  grows (tab switch, split, window resize) the freshly exposed area shows
-   *  raw wallpaper while the old canvas area keeps its tint — the split
-   *  surface users report as a broken terminal. Nudge the host's resize
-   *  handling whenever a terminal box actually changes size. The dispatch is
-   *  debounced and ResizeObserver only fires on real size changes, so the
-   *  loop terminates. */
-  syncTerminalRefitWatcher() {
-    if (typeof document === 'undefined' || typeof ResizeObserver !== 'function') return
-    if (!this.refitObserver) {
-      this.refitObserver = new ResizeObserver(() => this.queueRefitNudge())
-    }
-    const terminals = document.querySelectorAll('[data-terminal]:not([data-remote-screen]), [data-persistent-terminal]')
-    const seen = new Set()
-    for (const el of terminals) {
-      seen.add(el)
-      if (!this.refitTargets.has(el)) {
-        this.refitTargets.add(el)
-        this.refitObserver.observe(el)
-      }
-    }
-    for (const el of [...this.refitTargets]) {
-      if (!seen.has(el)) {
-        this.refitTargets.delete(el)
-        this.refitObserver.unobserve(el)
-      }
-    }
-  }
-
-  queueRefitNudge() {
-    if (this.refitQueued) return
-    this.refitQueued = true
-    setTimeout(() => {
-      this.refitQueued = false
-      if (typeof window !== 'undefined') window.dispatchEvent(new Event('resize'))
-    }, 150)
-  }
-
-  releaseRefitWatcher() {
-    this.refitObserver?.disconnect()
-    this.refitObserver = null
-    this.refitTargets.clear()
-    this.refitQueued = false
+    if (this.styleEl.textContent !== css) this.styleEl.textContent = css
   }
 
   destroy() {
-    this.releaseRefitWatcher()
-    this.update({ enabled: false })
+    if (typeof document === 'undefined') return
+    document.documentElement.removeAttribute('data-zcode-skins-active')
+    document.documentElement.removeAttribute('data-hermes-skins-active')
+    ;(this.styleEl || document.getElementById(STYLE_ID))?.remove()
+    this.styleEl = null
   }
 }
 
@@ -1614,7 +1425,15 @@ class RangeController {
     this.styleEl.id = RANGE_STYLE_ID
     this.styleEl.dataset.plugin = 'hermes-skins'
     this.styleEl.textContent = `
-      :root input[type="range"] {
+      /* Own painting only: the host settings row may wrap the slider in a
+         bordered box (its own surface token), and the glass input tint must
+         not fill the control box itself — RangeController paints track/thumb
+         only, and a tinted box fill reads as the square solid frame reported
+         in screenshots. The input stays transparent and pill-shaped everywhere,
+         including inside plugin pages that restate their own surface fills. */
+      :root input[type="range"],
+      :root[data-hermes-skins-active="true"] [data-hermes-skins-page] input[type="range"],
+      :root[data-hermes-skins-active="true"] [data-hermes-skins-surface] input[type="range"] {
         --hermes-range-accent: var(--dt-primary-solid, var(--theme-primary, var(--ui-accent, #3b82f6)));
         --hermes-range-rest: color-mix(in srgb, var(--ui-bg-chrome, #fff) 80%, var(--ui-text-primary, #64748b));
         --hermes-range-direction: to right;
@@ -1623,7 +1442,10 @@ class RangeController {
         min-height: 1.25rem;
         padding: 0;
         border: 0;
+        border-radius: 9999px;
+        outline-offset: 3px;
         background: transparent !important;
+        box-shadow: none !important;
         cursor: pointer;
         vertical-align: middle;
       }
@@ -1765,7 +1587,7 @@ class RangeController {
 // ─── Submodule: Config & Contract ─────────────────────────────
 
 const DEFAULT_CONFIG = {
-  schemaVersion: 4,
+  schemaVersion: 5,
   activeSkinId: 'default',
   previousTheme: null,
   wallpaperEnabled: false,
@@ -1780,6 +1602,9 @@ const DEFAULT_CONFIG = {
   wallpaperSound: false,
   wallpaperVolume: 100,
   panelGlass: 10,
+  composerTransparency: 65,
+  capsuleTransparency: 65,
+  cardTransparency: 65,
   bubbleOpacity: 55,
   composerFrost: 10,
   surfaceFrost: 8,
@@ -1813,6 +1638,9 @@ const PARAM_RANGES = {
   maskOcclusion: { min: 0, max: 100, unit: '%' },
   wallpaperOpacity: { min: 0, max: 100, unit: '%' },
   panelGlass: { min: 0, max: 100, unit: '%' },
+  composerTransparency: { min: 0, max: 100, unit: '%' },
+  capsuleTransparency: { min: 0, max: 100, unit: '%' },
+  cardTransparency: { min: 0, max: 100, unit: '%' },
   bubbleOpacity: { min: 0, max: 100, unit: '%' },
   composerFrost: { min: 0, max: 20, unit: 'px' },
   surfaceFrost: { min: 0, max: 20, unit: 'px' },
@@ -1844,7 +1672,7 @@ function normalizeConfig(value) {
   // schema 4+ is a deliberate user choice and stays.
   const legacyBubbleDefault = (raw.schemaVersion ?? 3) < 4 && raw.bubbleOpacity === 100
   return {
-    schemaVersion: 4,
+    schemaVersion: 5,
     activeSkinId: typeof raw.activeSkinId === 'string' ? raw.activeSkinId : DEFAULT_CONFIG.activeSkinId,
     previousTheme: typeof raw.previousTheme === 'string' ? raw.previousTheme : null,
     wallpaperEnabled: typeof raw.wallpaperEnabled === 'boolean' ? raw.wallpaperEnabled : DEFAULT_CONFIG.wallpaperEnabled,
@@ -1862,6 +1690,9 @@ function normalizeConfig(value) {
     // previously legal value (including the schema-1 default 80) legal as-is,
     // so no legacy mapping may rewrite 80 into 15.
     panelGlass: paramInRange('panelGlass', raw.panelGlass),
+    composerTransparency: paramInRange('composerTransparency', raw.composerTransparency),
+    capsuleTransparency: paramInRange('capsuleTransparency', raw.capsuleTransparency),
+    cardTransparency: paramInRange('cardTransparency', raw.cardTransparency),
     bubbleOpacity: legacyBubbleDefault ? 55 : paramInRange('bubbleOpacity', raw.bubbleOpacity),
     composerFrost: paramInRange('composerFrost', raw.composerFrost),
     surfaceFrost: paramInRange('surfaceFrost', raw.surfaceFrost),
@@ -1872,6 +1703,7 @@ function normalizeConfig(value) {
       typeof raw.weSelection.id === 'string' && typeof raw.weSelection.title === 'string'
       ? { id: raw.weSelection.id.slice(0, 1024), title: raw.weSelection.title.slice(0, 120),
           kind: String(raw.weSelection.kind || '').slice(0, 20), staticFallback: Boolean(raw.weSelection.staticFallback),
+          dir: typeof raw.weSelection.dir === 'string' ? raw.weSelection.dir.slice(0, 1024) : null,
           framePath: typeof raw.weSelection.framePath === 'string' ? raw.weSelection.framePath.slice(0, 1024) : null,
           previewPath: typeof raw.weSelection.previewPath === 'string' ? raw.weSelection.previewPath.slice(0, 1024) : null }
       : null,
@@ -2005,6 +1837,7 @@ class SkinController {
   }
 
   sync(themeName = this.lastTheme, renderedMode = this.lastMode) {
+    if (this.destroyed) return
     this.lastTheme = themeName
     this.lastMode = renderedMode
     const preview = this.store.$tryOnSkin.get()
@@ -2014,8 +1847,9 @@ class SkinController {
       this.store.exitTryOn()
     }
     const activePreview = this.store.$tryOnSkin.get()
-    const skin = activePreview || this.findSkin(themeName)
     const config = this.store.$config.get()
+    const skin = activePreview || this.findSkin(themeName) ||
+      (themeName === 'zcode-default' ? this.findSkin(config.activeSkinId) : null)
     const customSource = !activePreview && config.wallpaperSource && !config.wallpaperSource.startsWith('data:image/svg+xml')
     const source = customSource ? config.wallpaperSource : skin?.wallpaper
     const enabled = Boolean(source && (activePreview || config.wallpaperEnabled) && (skin || customSource))
@@ -2023,7 +1857,7 @@ class SkinController {
       enabled,
       type: customSource ? config.wallpaperType : (skin?.wallpaperType || 'image'),
       src: source,
-      sceneFrame: config.wallpaperType === 'scene' ? config.weSelection?.framePath : null,
+      sceneFrame: config.wallpaperType === 'scene' ? (config.weSelection?.framePath || config.weSelection?.previewPath) : null,
       webPreview: config.wallpaperType === 'web' ? config.weSelection?.previewPath : null,
       mode: config.wallpaperMode,
       fit: config.wallpaperFit,
@@ -2036,6 +1870,8 @@ class SkinController {
       isDark: renderedMode === 'dark'
     })
     this.glass.update({ enabled: showing, glassTransparency: config.panelGlass,
+      composerTransparency: config.composerTransparency, capsuleTransparency: config.capsuleTransparency,
+      cardTransparency: config.cardTransparency,
       bubbleOpacity: config.bubbleOpacity, composerFrost: config.composerFrost,
       surfaceFrost: config.surfaceFrost })
     this.applySkinColors(skin, renderedMode)
@@ -2056,7 +1892,8 @@ class SkinController {
     }
     styleEl.textContent = `
       :root, .dark, html {
-        ${colors.accent ? `--color-brand: ${colors.accent} !important; --color-accent: ${colors.accent} !important;` : ''}
+        ${colors.primary ? `--color-brand: ${colors.primary} !important; --color-primary: ${colors.primary} !important;` : ''}
+        ${colors.accent ? `--color-accent: ${colors.accent} !important;` : ''}
         ${colors.card ? `--color-card: ${colors.card} !important;` : ''}
         ${colors.border ? `--color-border: ${colors.border} !important; --color-card-border: ${colors.border} !important;` : ''}
         ${colors.foreground ? `--color-foreground: ${colors.foreground} !important;` : ''}
@@ -2128,10 +1965,12 @@ class SkinController {
   }
 
   destroy() {
+    this.destroyed = true
     this.previewCleanup?.()
     this.previewCleanup = null
     this.backdrop.destroy()
     this.glass.destroy()
+    if (typeof document !== 'undefined') document.getElementById('zcode-skin-colors')?.remove()
   }
 }
 
@@ -2159,13 +1998,23 @@ class SkinController {
  */
 const THEME_ATTRS = ['class', 'data-hermes-mode', 'data-hermes-theme', 'data-hermes-terminal-alpha']
 
+/** Explicit ZCode appearance wins over the operating system's preference. */
+function renderedThemeMode() {
+  if (typeof document === 'undefined') return 'dark'
+  const root = document.documentElement
+  const classes = `${root.className || ''} ${document.body?.className || ''}`
+  if (/(?:^|\s)(?:dark|theme-[\w-]*dark)(?:\s|$)/.test(classes)) return 'dark'
+  if (/(?:^|\s)(?:light|theme-[\w-]*light)(?:\s|$)/.test(classes)) return 'light'
+  return root.dataset?.hermesMode || (globalThis.window?.matchMedia?.('(prefers-color-scheme: dark)').matches ? 'dark' : 'light')
+}
+
 function watchRootTheme(store, controller) {
   if (typeof document === 'undefined' || typeof MutationObserver !== 'function') return () => {}
   const root = document.documentElement
   const stateKey = () => {
     const previewing = Boolean(store.$tryOnSkin.get())
     const themeName = previewing ? '~preview' : (root.dataset.hermesTheme || null)
-    return `${themeName}:${root.dataset.hermesMode || 'dark'}:${root.dataset.hermesTerminalAlpha || 'false'}`
+    return `${themeName}:${renderedThemeMode()}:${root.dataset.hermesTerminalAlpha || 'false'}`
   }
 
   let queued = false
@@ -2179,8 +2028,7 @@ function watchRootTheme(store, controller) {
     if (key === lastKey) return
     lastKey = key
     const previewing = Boolean(store.$tryOnSkin.get())
-    controller.sync(previewing ? undefined : (root.dataset.hermesTheme || null),
-      root.dataset.hermesMode || 'dark')
+    controller.sync(previewing ? undefined : (root.dataset.hermesTheme || 'zcode-default'), renderedThemeMode())
   }
 
   const observer = new MutationObserver(() => {
@@ -2200,6 +2048,8 @@ function watchRootTheme(store, controller) {
 // ─── Submodule: Wallpaper Engine Library ─────────────────────
 
 /** Wallpaper Engine library discovery through Hermes Desktop's local file bridge. */
+
+
 const STEAM_APP_ID = '431960'
 const VIDEO_EXTENSIONS = /\.(mp4|webm|mov|mkv|avi)$/i
 const IMAGE_EXTENSIONS = /\.(png|jpe?g|webp|gif|bmp)$/i
@@ -2215,7 +2065,13 @@ function safeProjectPath(dir, relative) {
 }
 
 function wallpaperMediaUrl(path, type) {
-  if (type === 'video') return `hermes-media://stream/${encodeURIComponent(path)}`
+  // Hermes hosts stream local video through their media protocol; ZCode's
+  // renderer converts absolute Windows paths to file:/// URLs instead
+  // (see normalizeMediaSource in backdrop-manager.js).
+  if (type === 'video' && typeof window !== 'undefined' && window.hermesDesktop &&
+      !window.zcodeDesktop) {
+    return `hermes-media://stream/${encodeURIComponent(path)}`
+  }
   return path
 }
 
@@ -2319,9 +2175,40 @@ function parseSteamLibraryFolders(text) {
   return [...new Set(paths)]
 }
 
+// A cached entry the scan no longer sees stays only while its project
+// directory is still indexed: the snapshot index may cover less than the
+// whole library (restart timing, index hydration), but once a folder re-pick
+// drops the directory the wallpaper is deleted and must not be resurrected.
+async function cachedItemStillIndexed(bridge, item) {
+  const dir = item?.dir || (typeof item?.id === 'string' && /^[a-z]:[\\/]/i.test(item.id) ? item.id : null)
+  if (!dir) return true
+  const entries = await entriesAt(bridge, dir)
+  return Boolean(entries?.some(entry => entry.name.toLowerCase() === 'project.json'))
+}
+
+// ZCode-only live-disk probe: the persisted index learns about deletions only
+// on a folder re-pick, but image previews load straight from disk through
+// file:/// URLs. A preview that no longer loads means the project vanished
+// from the disk even though the stale index still lists it.
+function probePreviewAlive(path) {
+  return new Promise(resolve => {
+    const source = normalizeMediaSource(path, 'image')
+    if (!source) { resolve(true); return }
+    const image = new Image()
+    const settle = alive => { image.onload = null; image.onerror = null; resolve(alive) }
+    image.onload = () => settle(true)
+    image.onerror = () => settle(false)
+    image.src = source
+  })
+}
+
 async function scanWallpaperEngine(bridge, manualRoots = []) {
   if (!bridge?.readDir || !bridge?.readFileText) {
-    return { items: [], libraries: [], error: 'Hermes Desktop local file bridge unavailable' }
+    // No usable index: serve the persisted library so the gallery survives
+    // restarts even when the directory index could not be rebuilt.
+    const cached = loadCachedWallpapers()
+    if (cached?.items?.length) return { items: cached.items, libraries: cached.libraries || [], error: null }
+    return { items: [], libraries: [], error: 'Local file bridge unavailable / 本地文件桥不可用' }
   }
   const probes = []
   for (const drive of ['C', 'D', 'E', 'F', 'G', 'H']) {
@@ -2362,7 +2249,49 @@ async function scanWallpaperEngine(bridge, manualRoots = []) {
   const scanned = await mapLimit(uniqueContainers, 4, ([path, source]) => scanContainer(bridge, path, source))
   const items = [...new Map(scanned.flat().map(item => [item.id, item])).values()]
     .sort((a, b) => a.title.localeCompare(b.title, 'zh'))
-  return { items, libraries: [...libraries], error: null }
+  // Merge with the persisted library: a fresh scan only sees what the current
+  // directory index covers, so previously discovered projects must survive
+  // restarts (their media paths are absolute and keep working). Cached items
+  // the scan no longer finds are kept only while their directory is still
+  // indexed — a refreshed index (folder re-pick) drops deleted projects.
+  const cached = loadCachedWallpapers()
+  const scannedIds = new Set(items.map(item => item.id))
+  const missing = (cached?.items || []).filter(item => !scannedIds.has(item.id))
+  const survivors = (await mapLimit(missing, 8,
+    async item => (await cachedItemStillIndexed(bridge, item)) ? item : null)).filter(Boolean)
+  let merged = [...new Map([...survivors, ...items].map(item => [item.id, item])).values()]
+    .sort((a, b) => a.title.localeCompare(b.title, 'zh'))
+  // Real-disk cross-check: prune projects whose image preview no longer loads
+  // from disk. Only when at least one probe succeeds — every probe failing
+  // means file:/// loading itself is unavailable, not that all wallpapers are.
+  if (typeof Image !== 'undefined' && bridge.isZcodeBridge) {
+    const probed = await mapLimit(
+      merged.filter(item => item.previewPath && IMAGE_EXTENSIONS.test(item.previewPath)),
+      8, async item => ({ item, alive: await probePreviewAlive(item.previewPath) }))
+    if (probed.length && probed.some(entry => entry.alive)) {
+      const dead = new Set(probed.filter(entry => !entry.alive).map(entry => entry.item.id))
+      merged = merged.filter(item => !dead.has(item.id))
+    }
+  }
+  saveCachedWallpapers(merged, [...libraries])
+  return { items: merged, libraries: [...libraries], error: null }
+}
+
+const ITEM_CACHE_KEY = 'zcode-skins:we-items'
+
+function loadCachedWallpapers() {
+  try {
+    const parsed = JSON.parse(localStorage.getItem(ITEM_CACHE_KEY) || 'null')
+    return parsed && Array.isArray(parsed.items) ? parsed : null
+  } catch {
+    return null
+  }
+}
+
+function saveCachedWallpapers(items, libraries) {
+  try {
+    localStorage.setItem(ITEM_CACHE_KEY, JSON.stringify({ items: items.slice(0, 500), libraries, at: Date.now() }))
+  } catch { /* Persistence is best-effort. */ }
 }
 
 // ─── Explicitly MIT-marked WebGL player from dsh-skins ──────
@@ -2405,26 +2334,52 @@ const WE_SCENE_PLAYER_HTML = `<!DOCTYPE html>
   'use strict';
 
   const canvas = document.getElementById('canvas');
-  const gl = canvas.getContext('webgl', { alpha: true, depth: true, antialias: true, premultipliedAlpha: false }) ||
-             canvas.getContext('experimental-webgl', { alpha: true, depth: true });
+  const contextOptions = { alpha: true, depth: true, antialias: false, premultipliedAlpha: false, powerPreference: 'low-power' };
+  const gl = canvas.getContext('webgl', contextOptions) || canvas.getContext('experimental-webgl', contextOptions);
   if (!gl) return;
+  const uniformCache = new WeakMap(), attribCache = new WeakMap();
+  function cachedLocation(cache, program, name, lookup) {
+    let locations = cache.get(program);
+    if (!locations) { locations = new Map(); cache.set(program, locations); }
+    if (!locations.has(name)) locations.set(name, lookup.call(gl, program, name));
+    return locations.get(name);
+  }
+  function uniformLocation(program, name) { return cachedLocation(uniformCache, program, name, gl.getUniformLocation); }
+  function attribLocation(program, name) { return cachedLocation(attribCache, program, name, gl.getAttribLocation); }
+
 
   let sceneData = null;
   let isPaused = false;
   let contextLost = false;
+  let disposed = false;
+  let frameSerial = 0;
   let fitMode = 'cover';
   let startTime = performance.now();
   let lastTime = performance.now();
   let textureCache = new Map();
+  let textureBytes = 0;
+  const textureBudget = 128 * 1024 * 1024;
   let videoTextureCache = new Map();
   let activeParticles = [];
   let mouseX = 0.5, mouseY = 0.5;
   let curRotX = 0, curRotY = 0;
+  // Real cursor mirrored by the host: the backdrop iframe never receives
+  // input (pointer-events none), so the embedding page forwards normalized
+  // pointer positions via dsh-set-cursor. cursorActive clears when the
+  // pointer leaves the window; it gates the cursorHide fade and the xray
+  // reveal (parallax reuses mouseX/mouseY). Cursor-driven GPU water-ripple
+  // simulation was intentionally removed for resource efficiency.
+  let cursorX = 0.5, cursorY = 0.5, cursorActive = false;
+
 
   window.addEventListener('mousemove', (e) => {
     mouseX = e.clientX / window.innerWidth;
     mouseY = e.clientY / window.innerHeight;
+    cursorX = mouseX;
+    cursorY = mouseY;
+    cursorActive = true;
   });
+  window.addEventListener('mouseleave', () => { cursorActive = false; });
 
   // 3D Shaders
   const vs3D = \`
@@ -2797,6 +2752,80 @@ const WE_SCENE_PLAYER_HTML = `<!DOCTYPE html>
     }
   \`;
 
+  // Fragment shader for the WE xray effect (cursor reveal): the blend
+  // texture replaces the layer around the pointer with a soft radial
+  // falloff, gated by the blend alpha and the multiply constant. The
+  // author's sprite asset is approximated analytically; u_cursorOn freezes
+  // the reveal while the pointer is outside the window.
+  const fsXray = [
+    'precision mediump float;',
+    'varying vec2 v_uv;',
+    'uniform sampler2D u_tex;',
+    'uniform sampler2D u_blend;',
+    'uniform float u_alpha;',
+    'uniform vec2 u_cursorUV;',
+    'uniform vec2 u_xrayAspect;',
+    'uniform float u_pointerScale;',
+    'uniform float u_multiply;',
+    'uniform float u_cursorOn;',
+    'void main() {',
+    '  vec4 base = texture2D(u_tex, v_uv);',
+    '  vec4 blendTex = texture2D(u_blend, v_uv);',
+    '  float d = distance((v_uv - u_cursorUV) * u_xrayAspect, vec2(0.0));',
+    '  float r = d * u_pointerScale;',
+    '  float f = exp(-r * r * 3.0) * u_cursorOn;',
+    '  float blend = clamp(blendTex.a * u_multiply, 0.0, 1.0) * f;',
+    '  vec3 rgb = mix(base.rgb, blendTex.rgb, blend);',
+    '  float a = mix(base.a, blendTex.a, blend) * u_alpha;',
+    '  gl_FragColor = vec4(rgb, a);',
+    '}',
+  ].join('\\n');
+
+  // Fragment shader for WE shake effect (eye blinking, breathing)
+  const fsShake = [
+    'precision mediump float;',
+    'varying vec2 v_uv;',
+    'uniform sampler2D u_tex;',
+    'uniform sampler2D u_flow;',
+    'uniform sampler2D u_mask;',
+    'uniform int u_hasMask;',
+    'uniform float u_time;',
+    'uniform float u_speed;',
+    'uniform float u_strength;',
+    'uniform vec2 u_friction;',
+    'uniform vec2 u_bounds;',
+    'uniform int u_direction;',
+    'uniform float u_alpha;',
+    'uniform float u_bright;',
+    'uniform float u_power;',
+    'const float M_PI_2 = 6.283185307179586;',
+    'void main() {',
+    '  vec2 flowColors = texture2D(u_flow, v_uv).rg;',
+    '  vec2 flowMask = (flowColors.rg - vec2(0.498, 0.498)) * 2.0;',
+    '  float time = u_speed * u_time;',
+    '  float offset = sin(mod(time, M_PI_2));',
+    '  offset = offset * 0.498 + 0.5;',
+    '  float base = step(0.0, cos(time));',
+    '  offset = mix(1.0 - pow(max(0.0, 1.0 - offset), u_friction.x), pow(max(0.0, offset), u_friction.y), base);',
+    '  offset = clamp((offset - u_bounds.x) * (1.0 / max(0.0001, u_bounds.y - u_bounds.x)), 0.0, 1.0);',
+    '  if (u_direction == 0) {',
+    '    offset = offset * 2.0 - 1.0;',
+    '  } else if (u_direction == 2) {',
+    '    offset = offset - 1.0;',
+    '  }',
+    '  vec2 texCoordOffset = offset * u_strength * u_strength * flowMask;',
+    '  vec4 color = texture2D(u_tex, v_uv + texCoordOffset);',
+    '  if (u_hasMask > 0) {',
+    '    float maskVal = texture2D(u_mask, v_uv + texCoordOffset).r;',
+    '    vec4 orig = texture2D(u_tex, v_uv);',
+    '    color = mix(orig, color, maskVal);',
+    '  }',
+    '  color.rgb = pow(color.rgb * u_bright, vec3(u_power));',
+    '  color.a *= u_alpha;',
+    '  gl_FragColor = color;',
+    '}',
+  ].join('\\n');
+
   // Fragment shader for water reflection
   const fsReflection = \`
     precision mediump float;
@@ -2812,6 +2841,7 @@ const WE_SCENE_PLAYER_HTML = `<!DOCTYPE html>
     uniform float u_waterLine;
     // Reflection sample window: start + puddleDepth * span (legacy 0.42/0.38).
     uniform vec2 u_reflectRange;
+
     void main() {
       float mask = texture2D(u_mask, v_uv).r;
       vec2 sceneUv = u_rect.xy + v_uv * u_rect.zw;
@@ -2825,6 +2855,7 @@ const WE_SCENE_PLAYER_HTML = `<!DOCTYPE html>
                    cos(v_uv.x * 90.0 + u_time * 1.9) * 0.0015;
       uvReflect.x += wave * mask;
       uvReflect.y += wave * mask;
+
       vec4 reflected = texture2D(u_fbo, clamp(uvReflect, 0.0, 1.0));
       reflected.rgb *= vec3(0.70, 0.75, 0.90);
       gl_FragColor = vec4(reflected.rgb, mask * u_alpha * 0.28);
@@ -2950,6 +2981,8 @@ const WE_SCENE_PLAYER_HTML = `<!DOCTYPE html>
   const progParticle = createProgram(vsBasic, fsParticle);
   const progFlow = createProgram(vsBasic, fsFlow);
   const progFlag = createProgram(vsBasic, fsFlag);
+  const progXray = createProgram(vsBasic, fsXray);
+  const progShake = createProgram(vsBasic, fsShake);
   const prog3D = createProgram(vs3D, fs3D);
 
   // Camera-facing 3D billboard (sun sprites, 3D particle streaks). The quad is
@@ -3081,20 +3114,20 @@ const WE_SCENE_PLAYER_HTML = `<!DOCTYPE html>
     const uc = mesh.userColors || {};
     const un = mesh.userNums || {};
     gl.useProgram(progNeonGrid);
-    gl.uniformMatrix4fv(gl.getUniformLocation(progNeonGrid, 'u_proj'), false, proj);
-    gl.uniformMatrix4fv(gl.getUniformLocation(progNeonGrid, 'u_view'), false, view);
-    gl.uniformMatrix4fv(gl.getUniformLocation(progNeonGrid, 'u_model'), false, mat4Transform3D(model.origin, model.angles, model.scale));
-    gl.uniform1f(gl.getUniformLocation(progNeonGrid, 'u_time'), elapsed);
-    gl.uniform1f(gl.getUniformLocation(progNeonGrid, 'u_mountainScale'), un.mountainscale != null ? un.mountainscale : 1);
+    gl.uniformMatrix4fv(uniformLocation(progNeonGrid, 'u_proj'), false, proj);
+    gl.uniformMatrix4fv(uniformLocation(progNeonGrid, 'u_view'), false, view);
+    gl.uniformMatrix4fv(uniformLocation(progNeonGrid, 'u_model'), false, mat4Transform3D(model.origin, model.angles, model.scale));
+    gl.uniform1f(uniformLocation(progNeonGrid, 'u_time'), elapsed);
+    gl.uniform1f(uniformLocation(progNeonGrid, 'u_mountainScale'), un.mountainscale != null ? un.mountainscale : 1);
     const near = uc.gridnear || [1, 0, 0.2];
     const far = uc.gridfar || [0, 0, 1];
     const bgc = uc.gridbackground || [0.1, 0, 0.1];
-    gl.uniform3f(gl.getUniformLocation(progNeonGrid, 'u_gridNear'), near[0], near[1], near[2]);
-    gl.uniform3f(gl.getUniformLocation(progNeonGrid, 'u_gridFar'), far[0], far[1], far[2]);
-    gl.uniform3f(gl.getUniformLocation(progNeonGrid, 'u_gridBg'), bgc[0], bgc[1], bgc[2]);
+    gl.uniform3f(uniformLocation(progNeonGrid, 'u_gridNear'), near[0], near[1], near[2]);
+    gl.uniform3f(uniformLocation(progNeonGrid, 'u_gridFar'), far[0], far[1], far[2]);
+    gl.uniform3f(uniformLocation(progNeonGrid, 'u_gridBg'), bgc[0], bgc[1], bgc[2]);
     const gpu = getGpuMesh(mesh);
-    const gPos = gl.getAttribLocation(progNeonGrid, 'a_pos');
-    const gUv = gl.getAttribLocation(progNeonGrid, 'a_uv');
+    const gPos = attribLocation(progNeonGrid, 'a_pos');
+    const gUv = attribLocation(progNeonGrid, 'a_uv');
     gl.enableVertexAttribArray(gPos);
     gl.enableVertexAttribArray(gUv);
     gl.bindBuffer(gl.ARRAY_BUFFER, gpu.posBuf);
@@ -3147,31 +3180,31 @@ const WE_SCENE_PLAYER_HTML = `<!DOCTYPE html>
   function drawCloudsBgLayer(layer, elapsed, width, height) {
     gl.useProgram(progCloudsBg);
     gl.bindBuffer(gl.ARRAY_BUFFER, spriteBuf);
-    const cPos = gl.getAttribLocation(progCloudsBg, 'a_corner');
-    const cUv = gl.getAttribLocation(progCloudsBg, 'a_uv');
+    const cPos = attribLocation(progCloudsBg, 'a_corner');
+    const cUv = attribLocation(progCloudsBg, 'a_uv');
     gl.enableVertexAttribArray(cPos);
     gl.enableVertexAttribArray(cUv);
     gl.vertexAttribPointer(cPos, 2, gl.FLOAT, false, 16, 0);
     gl.vertexAttribPointer(cUv, 2, gl.FLOAT, false, 16, 8);
-    gl.uniform1f(gl.getUniformLocation(progCloudsBg, 'u_time'), elapsed);
-    gl.uniform1f(gl.getUniformLocation(progCloudsBg, 'u_aspect'), width / Math.max(height, 1));
+    gl.uniform1f(uniformLocation(progCloudsBg, 'u_time'), elapsed);
+    gl.uniform1f(uniformLocation(progCloudsBg, 'u_aspect'), width / Math.max(height, 1));
     const uc = layer.userColors || {};
     const c1 = uc.clouds || [0.05, 0.15, 0.4];
     const ch = uc.horizon || [0.05, 0.15, 0.4];
-    gl.uniform3f(gl.getUniformLocation(progCloudsBg, 'u_color1'), c1[0], c1[1], c1[2]);
-    gl.uniform3f(gl.getUniformLocation(progCloudsBg, 'u_colorHorizon'), ch[0], ch[1], ch[2]);
+    gl.uniform3f(uniformLocation(progCloudsBg, 'u_color1'), c1[0], c1[1], c1[2]);
+    gl.uniform3f(uniformLocation(progCloudsBg, 'u_colorHorizon'), ch[0], ch[1], ch[2]);
     if (layer.texUrl) {
       const texRec = loadTexture(layer.texUrl, true);
       if (texRec.loaded) {
         gl.activeTexture(gl.TEXTURE0);
         gl.bindTexture(gl.TEXTURE_2D, texRec.texture);
-        gl.uniform1i(gl.getUniformLocation(progCloudsBg, 'u_tex'), 0);
-        gl.uniform1i(gl.getUniformLocation(progCloudsBg, 'u_hasTex'), 1);
+        gl.uniform1i(uniformLocation(progCloudsBg, 'u_tex'), 0);
+        gl.uniform1i(uniformLocation(progCloudsBg, 'u_hasTex'), 1);
       } else {
-        gl.uniform1i(gl.getUniformLocation(progCloudsBg, 'u_hasTex'), 0);
+        gl.uniform1i(uniformLocation(progCloudsBg, 'u_hasTex'), 0);
       }
     } else {
-      gl.uniform1i(gl.getUniformLocation(progCloudsBg, 'u_hasTex'), 0);
+      gl.uniform1i(uniformLocation(progCloudsBg, 'u_hasTex'), 0);
     }
     gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
   }
@@ -3186,31 +3219,31 @@ const WE_SCENE_PLAYER_HTML = `<!DOCTYPE html>
 
   function drawBillboard(center, axisX, axisY, texUrl, color, proj, view) {
     gl.useProgram(progSprite);
-    gl.uniformMatrix4fv(gl.getUniformLocation(progSprite, 'u_proj'), false, proj);
-    gl.uniformMatrix4fv(gl.getUniformLocation(progSprite, 'u_view'), false, view);
+    gl.uniformMatrix4fv(uniformLocation(progSprite, 'u_proj'), false, proj);
+    gl.uniformMatrix4fv(uniformLocation(progSprite, 'u_view'), false, view);
     gl.bindBuffer(gl.ARRAY_BUFFER, spriteBuf);
-    const cPos = gl.getAttribLocation(progSprite, 'a_corner');
-    const cUv = gl.getAttribLocation(progSprite, 'a_uv');
+    const cPos = attribLocation(progSprite, 'a_corner');
+    const cUv = attribLocation(progSprite, 'a_uv');
     gl.enableVertexAttribArray(cPos);
     gl.enableVertexAttribArray(cUv);
     gl.vertexAttribPointer(cPos, 2, gl.FLOAT, false, 16, 0);
     gl.vertexAttribPointer(cUv, 2, gl.FLOAT, false, 16, 8);
-    gl.uniform3f(gl.getUniformLocation(progSprite, 'u_center'), center[0], center[1], center[2]);
-    gl.uniform2f(gl.getUniformLocation(progSprite, 'u_axisX'), axisX[0], axisX[1]);
-    gl.uniform2f(gl.getUniformLocation(progSprite, 'u_axisY'), axisY[0], axisY[1]);
-    gl.uniform4f(gl.getUniformLocation(progSprite, 'u_color'), color[0], color[1], color[2], color[3]);
+    gl.uniform3f(uniformLocation(progSprite, 'u_center'), center[0], center[1], center[2]);
+    gl.uniform2f(uniformLocation(progSprite, 'u_axisX'), axisX[0], axisX[1]);
+    gl.uniform2f(uniformLocation(progSprite, 'u_axisY'), axisY[0], axisY[1]);
+    gl.uniform4f(uniformLocation(progSprite, 'u_color'), color[0], color[1], color[2], color[3]);
     if (texUrl) {
       const texRec = loadTexture(texUrl);
       if (texRec.loaded) {
         gl.activeTexture(gl.TEXTURE0);
         gl.bindTexture(gl.TEXTURE_2D, texRec.texture);
-        gl.uniform1i(gl.getUniformLocation(progSprite, 'u_tex'), 0);
-        gl.uniform1i(gl.getUniformLocation(progSprite, 'u_hasTex'), 1);
+        gl.uniform1i(uniformLocation(progSprite, 'u_tex'), 0);
+        gl.uniform1i(uniformLocation(progSprite, 'u_hasTex'), 1);
       } else {
-        gl.uniform1i(gl.getUniformLocation(progSprite, 'u_hasTex'), 0);
+        gl.uniform1i(uniformLocation(progSprite, 'u_hasTex'), 0);
       }
     } else {
-      gl.uniform1i(gl.getUniformLocation(progSprite, 'u_hasTex'), 0);
+      gl.uniform1i(uniformLocation(progSprite, 'u_hasTex'), 0);
     }
     gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
   }
@@ -3223,8 +3256,11 @@ const WE_SCENE_PLAYER_HTML = `<!DOCTYPE html>
   }
   function updateParticles3d(sys, dt) {
     const st = getParticles3d(sys);
-    st.acc += sys.rate * dt;
-    while (st.acc >= 1 && st.list.length < sys.maxCount) {
+    const maxCount = Math.min(256, Math.max(0, Number(sys.maxCount) || 0));
+    const rate = Math.min(256, Math.max(0, Number(sys.rate) || 0));
+    // Do not accumulate missed spawns while full and release them in a burst.
+    st.acc = Math.min(maxCount, st.acc + rate * dt);
+    while (st.acc >= 1 && st.list.length < maxCount) {
       st.acc -= 1;
       // Random point on a sphere shell around the emitter origin.
       const th = Math.random() * Math.PI * 2;
@@ -3275,9 +3311,23 @@ const WE_SCENE_PLAYER_HTML = `<!DOCTYPE html>
     const img = new Image();
     img.crossOrigin = 'anonymous';
     img.onload = () => {
+      if (disposed || contextLost) return;
+      // Bound decoded image residency as well as the canvas. A 4K multi-layer
+      // scene can otherwise allocate hundreds of MiB of GPU textures.
+      const maxSize = Math.min(Number(gl.getParameter(gl.MAX_TEXTURE_SIZE)) || 4096, 4096);
+      const scale = Math.min(1, maxSize / Math.max(img.width, img.height), Math.sqrt(4 * 1024 * 1024 / (img.width * img.height)));
+      const w = Math.max(1, Math.round(img.width * scale)), h = Math.max(1, Math.round(img.height * scale));
+      const bytes = w * h * 4;
+      if (textureBytes + bytes > textureBudget) { stopWithError(new Error('Scene image textures exceed 128 MiB')); return; }
+      let source = img;
+      if (scale < 1) {
+        source = document.createElement('canvas');
+        source.width = w; source.height = h;
+        source.getContext('2d').drawImage(img, 0, 0, w, h);
+      }
       gl.bindTexture(gl.TEXTURE_2D, tex);
       gl.pixelStorei(gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL, false);
-      gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, img);
+      gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, source);
       gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
       gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
       const wrap = repeat ? gl.REPEAT : gl.CLAMP_TO_EDGE;
@@ -3286,6 +3336,7 @@ const WE_SCENE_PLAYER_HTML = `<!DOCTYPE html>
       record.loaded = true;
       record.width = img.width;
       record.height = img.height;
+      textureBytes += bytes;
     };
     img.src = url;
     return record;
@@ -3322,13 +3373,18 @@ const WE_SCENE_PLAYER_HTML = `<!DOCTYPE html>
       video.muted = true;
       video.playsInline = true;
       video.preload = 'auto';
-      record = { texture, video, loaded: false };
+      record = { texture, video, loaded: false, enabled: false };
       video.addEventListener('loadeddata', () => { record.loaded = true; });
       videoTextureCache.set(layer.videoUrl, record);
     }
-    if (enabled && !isPaused) { void record.video.play().catch(() => {}); }
-    else record.video.pause();
-    if (enabled && record.loaded && record.video.readyState >= 2) {
+    if (record.enabled !== enabled) {
+      record.enabled = enabled;
+      if (enabled && !isPaused) { void record.video.play().catch(() => {}); }
+      else record.video.pause();
+    }
+    // Shared video layers/passes upload each decoded frame only once.
+    const decodedFrame = record.video.getVideoPlaybackQuality?.().totalVideoFrames ?? record.video.currentTime;
+    if (enabled && record.loaded && record.video.readyState >= 2 && record.uploadFrame !== frameSerial && record.uploadTime !== decodedFrame) {
       gl.bindTexture(gl.TEXTURE_2D, record.texture);
       gl.pixelStorei(gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL, false);
       gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, record.video);
@@ -3336,6 +3392,8 @@ const WE_SCENE_PLAYER_HTML = `<!DOCTYPE html>
       gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
       gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
       gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+      record.uploadTime = decodedFrame;
+      record.uploadFrame = frameSerial;
     }
     return record;
   }
@@ -3585,11 +3643,12 @@ const WE_SCENE_PLAYER_HTML = `<!DOCTYPE html>
     reflW = w; reflH = h;
   }
 
+  // Draws exactly one frame. The loop itself is owned by render(): an early
+  // version scheduled the next frame here AND in render(), which doubled the
+  // rAF chain every frame (2^n callbacks) and saturated the GPU.
   function renderFrame(now) {
-    if (!sceneData) {
-      requestAnimationFrame(render);
-      return;
-    }
+    if (!sceneData) return;
+    frameSerial += 1;
 
     const dt = Math.min((now - lastTime) / 1000, 0.1);
     lastTime = now;
@@ -3610,8 +3669,14 @@ const WE_SCENE_PLAYER_HTML = `<!DOCTYPE html>
     // canvas is upscaled by the compositor and the wallpaper looks soft
     // (capped at 2x to bound GPU cost on very high DPR screens).
     const dpr = Math.min(window.devicePixelRatio || 1, 2);
-    const width = Math.max(1, Math.round(window.innerWidth * dpr));
-    const height = Math.max(1, Math.round(window.innerHeight * dpr));
+    let width = Math.max(1, Math.round(window.innerWidth * dpr));
+    let height = Math.max(1, Math.round(window.innerHeight * dpr));
+    const maxDim = 2560;
+    if (width > maxDim || height > maxDim) {
+      const s = maxDim / Math.max(width, height);
+      width = Math.max(1, Math.round(width * s));
+      height = Math.max(1, Math.round(height * s));
+    }
     if (canvas.width !== width || canvas.height !== height) {
       canvas.width = width;
       canvas.height = height;
@@ -3690,13 +3755,13 @@ const WE_SCENE_PLAYER_HTML = `<!DOCTYPE html>
       // pass that switches to another program (bgLayers, billboards).
       function bindProg3D(viewOverride) {
         gl.useProgram(prog3D);
-        gl.uniformMatrix4fv(gl.getUniformLocation(prog3D, 'u_proj'), false, proj3D);
-        gl.uniformMatrix4fv(gl.getUniformLocation(prog3D, 'u_view'), false, viewOverride || view3D);
-        gl.uniform3f(gl.getUniformLocation(prog3D, 'u_cameraPos'), eye[0], eye[1], eye[2]);
-        gl.uniform1f(gl.getUniformLocation(prog3D, 'u_time'), elapsed);
+        gl.uniformMatrix4fv(uniformLocation(prog3D, 'u_proj'), false, proj3D);
+        gl.uniformMatrix4fv(uniformLocation(prog3D, 'u_view'), false, viewOverride || view3D);
+        gl.uniform3f(uniformLocation(prog3D, 'u_cameraPos'), eye[0], eye[1], eye[2]);
+        gl.uniform1f(uniformLocation(prog3D, 'u_time'), elapsed);
         // WE-standard scene shading for generic scenes; car scenes keep their
         // dedicated paint/grid pipeline.
-        gl.uniform1i(gl.getUniformLocation(prog3D, 'u_sceneStd'), isCarScene ? 0 : 1);
+        gl.uniform1i(uniformLocation(prog3D, 'u_sceneStd'), isCarScene ? 0 : 1);
         // Engine-glow boost positions: origins of jet models (ricepod.vert).
         const jetPos = [];
         for (const model of sceneData.models) {
@@ -3704,35 +3769,35 @@ const WE_SCENE_PLAYER_HTML = `<!DOCTYPE html>
           const jetLike = mName.includes('jet') || (model.meshes || []).some((mm) => (mm.shader || '').toLowerCase().includes('jet'));
           if (jetLike && jetPos.length < 4) jetPos.push(model.origin || [0, 0, 0]);
         }
-        gl.uniform1i(gl.getUniformLocation(prog3D, 'u_jetCount'), jetPos.length);
+        gl.uniform1i(uniformLocation(prog3D, 'u_jetCount'), jetPos.length);
         for (let ji = 0; ji < 4; ji++) {
           const jp = jetPos[ji] || [0, 0, 0];
-          gl.uniform3f(gl.getUniformLocation(prog3D, 'u_jetPos[' + ji + ']'), jp[0], jp[1], jp[2]);
+          gl.uniform3f(uniformLocation(prog3D, 'u_jetPos[' + ji + ']'), jp[0], jp[1], jp[2]);
         }
         const pointLights = sceneData.pointLights || [];
-        gl.uniform1i(gl.getUniformLocation(prog3D, 'u_lightCount'), pointLights.length);
+        gl.uniform1i(uniformLocation(prog3D, 'u_lightCount'), pointLights.length);
         for (let li = 0; li < 4; li++) {
           const light = pointLights[li] || { origin: [0, 0, 0], color: [0, 0, 0], radius: 1 };
-          gl.uniform3f(gl.getUniformLocation(prog3D, 'u_lightPos[' + li + ']'), light.origin[0], light.origin[1], light.origin[2]);
-          gl.uniform4f(gl.getUniformLocation(prog3D, 'u_lightColorRadius[' + li + ']'), light.color[0], light.color[1], light.color[2], light.radius);
+          gl.uniform3f(uniformLocation(prog3D, 'u_lightPos[' + li + ']'), light.origin[0], light.origin[1], light.origin[2]);
+          gl.uniform4f(uniformLocation(prog3D, 'u_lightColorRadius[' + li + ']'), light.color[0], light.color[1], light.color[2], light.radius);
         }
         const sky = sceneData.skyLightColor || [0, 0, 0];
-        gl.uniform3f(gl.getUniformLocation(prog3D, 'u_skyLightColor'), sky[0], sky[1], sky[2]);
+        gl.uniform3f(uniformLocation(prog3D, 'u_skyLightColor'), sky[0], sky[1], sky[2]);
         // Ricepod uses lightDir (-0.577, 0.577, 0.577), car uses (0.577, 0.577, 0.577)
-        gl.uniform3f(gl.getUniformLocation(prog3D, 'u_lightDir'), isCarScene ? 0.577 : -0.577, 0.577, 0.577);
+        gl.uniform3f(uniformLocation(prog3D, 'u_lightDir'), isCarScene ? 0.577 : -0.577, 0.577, 0.577);
         const amb = sceneData.clearColor || [0.1, 0.1, 0.15];
         // Generic scenes must preserve authored black ambient. Artificially
         // lifting it illuminated distant geometry that WE intentionally hides.
         const ambColor = isCarScene ? amb : (sceneData.ambientColor || [0, 0, 0]);
-        gl.uniform3f(gl.getUniformLocation(prog3D, 'u_ambientColor'), ambColor[0], ambColor[1], ambColor[2]);
-        gl.uniform3f(gl.getUniformLocation(prog3D, 'u_paintColor'), bodyCol[0], bodyCol[1], bodyCol[2]);
+        gl.uniform3f(uniformLocation(prog3D, 'u_ambientColor'), ambColor[0], ambColor[1], ambColor[2]);
+        gl.uniform3f(uniformLocation(prog3D, 'u_paintColor'), bodyCol[0], bodyCol[1], bodyCol[2]);
       }
       bindProg3D();
 
-      const locPos = gl.getAttribLocation(prog3D, 'a_pos');
-      const locNorm = gl.getAttribLocation(prog3D, 'a_norm');
-      const locUv = gl.getAttribLocation(prog3D, 'a_uv');
-      const locUv2 = gl.getAttribLocation(prog3D, 'a_uv2');
+      const locPos = attribLocation(prog3D, 'a_pos');
+      const locNorm = attribLocation(prog3D, 'a_norm');
+      const locUv = attribLocation(prog3D, 'a_uv');
+      const locUv2 = attribLocation(prog3D, 'a_uv2');
       gl.enableVertexAttribArray(locPos);
       gl.enableVertexAttribArray(locNorm);
       gl.enableVertexAttribArray(locUv);
@@ -3789,9 +3854,9 @@ const WE_SCENE_PLAYER_HTML = `<!DOCTYPE html>
         if (flags.skybox || flags.followEye) {
           modelMat = mat4Transform3D([eye[0], eye[1], eye[2]], model.angles, model.scale);
         }
-        gl.uniformMatrix4fv(gl.getUniformLocation(prog3D, 'u_model'), false, modelMat);
+        gl.uniformMatrix4fv(uniformLocation(prog3D, 'u_model'), false, modelMat);
         const normMat = mat3NormalMatrix(modelMat);
-        gl.uniformMatrix3fv(gl.getUniformLocation(prog3D, 'u_normMat'), false, normMat);
+        gl.uniformMatrix3fv(uniformLocation(prog3D, 'u_normMat'), false, normMat);
 
         const gpu = getGpuMesh(mesh);
         gl.bindBuffer(gl.ARRAY_BUFFER, gpu.posBuf);
@@ -3804,20 +3869,20 @@ const WE_SCENE_PLAYER_HTML = `<!DOCTYPE html>
         gl.vertexAttribPointer(locUv2, 2, gl.FLOAT, false, 0, 0);
         gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, gpu.idxBuf);
 
-        gl.uniform1i(gl.getUniformLocation(prog3D, 'u_isDome'), flags.dome ? 1 : 0);
-        gl.uniform1i(gl.getUniformLocation(prog3D, 'u_isShadow'), flags.shadow ? 1 : 0);
-        gl.uniform1i(gl.getUniformLocation(prog3D, 'u_isGrid'), flags.grid ? 1 : 0);
-        gl.uniform1i(gl.getUniformLocation(prog3D, 'u_isSkybox'), flags.skybox ? 1 : 0);
-        gl.uniform1i(gl.getUniformLocation(prog3D, 'u_isSelfIllum'), flags.selfIllum ? 1 : 0);
-        gl.uniform1i(gl.getUniformLocation(prog3D, 'u_isCarBody'), flags.body ? 1 : 0);
-        gl.uniform1i(gl.getUniformLocation(prog3D, 'u_isGlass'), flags.glass ? 1 : 0);
-        gl.uniform1i(gl.getUniformLocation(prog3D, 'u_isJet'), flags.jet ? 1 : 0);
-        gl.uniform1i(gl.getUniformLocation(prog3D, 'u_isAurora'), flags.aurora ? 1 : 0);
-        gl.uniform1i(gl.getUniformLocation(prog3D, 'u_isThunder'), flags.thunder ? 1 : 0);
-        gl.uniform1i(gl.getUniformLocation(prog3D, 'u_isBg'), flags.bg ? 1 : 0);
-        gl.uniform1i(gl.getUniformLocation(prog3D, 'u_isNeonSun'), flags.neonSun ? 1 : 0);
-        gl.uniform1i(gl.getUniformLocation(prog3D, 'u_gradFade'), mesh.gradFade ? 1 : 0);
-        gl.uniform1i(gl.getUniformLocation(prog3D, 'u_hasTint'), mesh.tint || flags.neonSun ? 1 : 0);
+        gl.uniform1i(uniformLocation(prog3D, 'u_isDome'), flags.dome ? 1 : 0);
+        gl.uniform1i(uniformLocation(prog3D, 'u_isShadow'), flags.shadow ? 1 : 0);
+        gl.uniform1i(uniformLocation(prog3D, 'u_isGrid'), flags.grid ? 1 : 0);
+        gl.uniform1i(uniformLocation(prog3D, 'u_isSkybox'), flags.skybox ? 1 : 0);
+        gl.uniform1i(uniformLocation(prog3D, 'u_isSelfIllum'), flags.selfIllum ? 1 : 0);
+        gl.uniform1i(uniformLocation(prog3D, 'u_isCarBody'), flags.body ? 1 : 0);
+        gl.uniform1i(uniformLocation(prog3D, 'u_isGlass'), flags.glass ? 1 : 0);
+        gl.uniform1i(uniformLocation(prog3D, 'u_isJet'), flags.jet ? 1 : 0);
+        gl.uniform1i(uniformLocation(prog3D, 'u_isAurora'), flags.aurora ? 1 : 0);
+        gl.uniform1i(uniformLocation(prog3D, 'u_isThunder'), flags.thunder ? 1 : 0);
+        gl.uniform1i(uniformLocation(prog3D, 'u_isBg'), flags.bg ? 1 : 0);
+        gl.uniform1i(uniformLocation(prog3D, 'u_isNeonSun'), flags.neonSun ? 1 : 0);
+        gl.uniform1i(uniformLocation(prog3D, 'u_gradFade'), mesh.gradFade ? 1 : 0);
+        gl.uniform1i(uniformLocation(prog3D, 'u_hasTint'), mesh.tint || flags.neonSun ? 1 : 0);
         const uc = mesh.userColors || {};
         let tintCol = mesh.tint || [1, 1, 1];
         let tint2Col = mesh.tint2 || tintCol;
@@ -3825,16 +3890,16 @@ const WE_SCENE_PLAYER_HTML = `<!DOCTYPE html>
           tintCol = uc.colorsuntop || tintCol;
           tint2Col = uc.colorsunbottom || tint2Col;
         }
-        gl.uniform3f(gl.getUniformLocation(prog3D, 'u_tint'), tintCol[0], tintCol[1], tintCol[2]);
-        gl.uniform3f(gl.getUniformLocation(prog3D, 'u_tint2'), tint2Col[0], tint2Col[1], tint2Col[2]);
-        gl.uniform1i(gl.getUniformLocation(prog3D, 'u_hasLightmap'), 0);
+        gl.uniform3f(uniformLocation(prog3D, 'u_tint'), tintCol[0], tintCol[1], tintCol[2]);
+        gl.uniform3f(uniformLocation(prog3D, 'u_tint2'), tint2Col[0], tint2Col[1], tint2Col[2]);
+        gl.uniform1i(uniformLocation(prog3D, 'u_hasLightmap'), 0);
         if (mesh.lightmapUrl) {
           const lightmapRec = loadTexture(mesh.lightmapUrl, false);
           if (lightmapRec.loaded) {
             gl.activeTexture(gl.TEXTURE2);
             gl.bindTexture(gl.TEXTURE_2D, lightmapRec.texture);
-            gl.uniform1i(gl.getUniformLocation(prog3D, 'u_lightmap'), 2);
-            gl.uniform1i(gl.getUniformLocation(prog3D, 'u_hasLightmap'), 1);
+            gl.uniform1i(uniformLocation(prog3D, 'u_lightmap'), 2);
+            gl.uniform1i(uniformLocation(prog3D, 'u_hasLightmap'), 1);
             gl.activeTexture(gl.TEXTURE0);
           }
         }
@@ -3844,7 +3909,7 @@ const WE_SCENE_PLAYER_HTML = `<!DOCTYPE html>
           if (tex2Rec.loaded) {
             gl.activeTexture(gl.TEXTURE1);
             gl.bindTexture(gl.TEXTURE_2D, tex2Rec.texture);
-            gl.uniform1i(gl.getUniformLocation(prog3D, 'u_tex2'), 1);
+            gl.uniform1i(uniformLocation(prog3D, 'u_tex2'), 1);
             gl.activeTexture(gl.TEXTURE0);
           }
         }
@@ -3854,13 +3919,13 @@ const WE_SCENE_PLAYER_HTML = `<!DOCTYPE html>
         if (mesh.noDepthWrite) gl.depthMask(false);
 
         const sp = getSpecParams(mesh.texUrl);
-        gl.uniform1f(gl.getUniformLocation(prog3D, 'u_specStrength'), sp[0]);
-        gl.uniform1f(gl.getUniformLocation(prog3D, 'u_specPower'), sp[1]);
+        gl.uniform1f(uniformLocation(prog3D, 'u_specStrength'), sp[0]);
+        gl.uniform1f(uniformLocation(prog3D, 'u_specPower'), sp[1]);
 
         if (flags.body) {
           const strCol = sceneData.carStripesColor || [0, 0, 0];
-          gl.uniform3f(gl.getUniformLocation(prog3D, 'u_paintColor'), bodyCol[0], bodyCol[1], bodyCol[2]);
-          gl.uniform3f(gl.getUniformLocation(prog3D, 'u_stripeColor'), strCol[0], strCol[1], strCol[2]);
+          gl.uniform3f(uniformLocation(prog3D, 'u_paintColor'), bodyCol[0], bodyCol[1], bodyCol[2]);
+          gl.uniform3f(uniformLocation(prog3D, 'u_stripeColor'), strCol[0], strCol[1], strCol[2]);
         }
 
         // Load texture for all meshes that have one (including skybox)
@@ -3869,15 +3934,15 @@ const WE_SCENE_PLAYER_HTML = `<!DOCTYPE html>
           if (texRec.loaded) {
             gl.activeTexture(gl.TEXTURE0);
             gl.bindTexture(gl.TEXTURE_2D, texRec.texture);
-            gl.uniform1i(gl.getUniformLocation(prog3D, 'u_tex'), 0);
-            gl.uniform1i(gl.getUniformLocation(prog3D, 'u_hasTex'), 1);
+            gl.uniform1i(uniformLocation(prog3D, 'u_tex'), 0);
+            gl.uniform1i(uniformLocation(prog3D, 'u_hasTex'), 1);
           } else {
-            gl.uniform1i(gl.getUniformLocation(prog3D, 'u_hasTex'), 0);
-            gl.uniform3f(gl.getUniformLocation(prog3D, 'u_color'), 0.7, 0.7, 0.75);
+            gl.uniform1i(uniformLocation(prog3D, 'u_hasTex'), 0);
+            gl.uniform3f(uniformLocation(prog3D, 'u_color'), 0.7, 0.7, 0.75);
           }
         } else {
-          gl.uniform1i(gl.getUniformLocation(prog3D, 'u_hasTex'), 0);
-          gl.uniform3f(gl.getUniformLocation(prog3D, 'u_color'), 0.65, 0.68, 0.72);
+          gl.uniform1i(uniformLocation(prog3D, 'u_hasTex'), 0);
+          gl.uniform3f(uniformLocation(prog3D, 'u_color'), 0.65, 0.68, 0.72);
         }
 
         gl.drawElements(gl.TRIANGLES, gpu.iCount, gpu.idxType, 0);
@@ -3903,7 +3968,7 @@ const WE_SCENE_PLAYER_HTML = `<!DOCTYPE html>
 
         // Dome to FBO
         gl.depthMask(false);
-        gl.uniform1i(gl.getUniformLocation(prog3D, 'u_hasReflTex'), 0);
+        gl.uniform1i(uniformLocation(prog3D, 'u_hasReflTex'), 0);
         for (const model of domeModels) {
           for (const mesh of model.meshes) drawMesh(model, mesh, { dome: true });
         }
@@ -3942,7 +4007,7 @@ const WE_SCENE_PLAYER_HTML = `<!DOCTYPE html>
 
       // 1. Skybox / Dome: render first, no depth write
       gl.depthMask(false);
-      gl.uniform1i(gl.getUniformLocation(prog3D, 'u_hasReflTex'), 0);
+      gl.uniform1i(uniformLocation(prog3D, 'u_hasReflTex'), 0);
       for (const model of skyboxModels) {
         for (const mesh of model.meshes) drawMesh(model, mesh, { skybox: true });
       }
@@ -3994,14 +4059,14 @@ const WE_SCENE_PLAYER_HTML = `<!DOCTYPE html>
       if (hasGrid && reflTex) {
         gl.activeTexture(gl.TEXTURE1);
         gl.bindTexture(gl.TEXTURE_2D, reflTex);
-        gl.uniform1i(gl.getUniformLocation(prog3D, 'u_reflTex'), 1);
-        gl.uniform1i(gl.getUniformLocation(prog3D, 'u_hasReflTex'), 1);
-        gl.uniform2f(gl.getUniformLocation(prog3D, 'u_resolution'), width, height);
+        gl.uniform1i(uniformLocation(prog3D, 'u_reflTex'), 1);
+        gl.uniform1i(uniformLocation(prog3D, 'u_hasReflTex'), 1);
+        gl.uniform2f(uniformLocation(prog3D, 'u_resolution'), width, height);
       }
       for (const model of gridModels) {
         for (const mesh of model.meshes) drawMesh(model, mesh, { grid: true });
       }
-      gl.uniform1i(gl.getUniformLocation(prog3D, 'u_hasReflTex'), 0);
+      gl.uniform1i(uniformLocation(prog3D, 'u_hasReflTex'), 0);
 
       // 5. Glass (blended)
       for (const { model, mesh } of glassQueue) {
@@ -4063,12 +4128,14 @@ const WE_SCENE_PLAYER_HTML = `<!DOCTYPE html>
       gl.disable(gl.DEPTH_TEST);
       gl.disable(gl.CULL_FACE);
       gl.disable(gl.BLEND);
-      requestAnimationFrame(render);
       return;
     }
 
     const sceneW = sceneData.width || 3840;
     const sceneH = sceneData.height || 2160;
+    // Select layers before cursor updates and both render passes consume them.
+    const currentPeriod = activeTimePeriod(sceneData.timeSchedule, new Date());
+    const renderLayers = sceneData.layers.filter((layer) => layerEnabledByTime(layer, currentPeriod));
 
     let scale = 1;
     if (fitMode === 'cover') {
@@ -4082,7 +4149,40 @@ const WE_SCENE_PLAYER_HTML = `<!DOCTYPE html>
     const vpX = fitMode === 'fill' ? 0 : Math.round((width - vpW) / 2);
     const vpY = fitMode === 'fill' ? 0 : Math.round((height - vpH) / 2);
 
-    ensureFbo(Math.min(sceneW, 2048), Math.min(sceneH, 1080));
+    // Mirrored cursor in scene px (y-up, matching layer coords). Cover/contain
+    // letterboxing is undone through the viewport rect; fill stretches 1:1.
+    let cursorSX = -1e9, cursorSY = -1e9;
+    if (cursorActive) {
+      if (fitMode === 'fill') {
+        cursorSX = cursorX * sceneW;
+        cursorSY = (1 - cursorY) * sceneH;
+      } else {
+        const dx = cursorX * width, dy = (1 - cursorY) * height;
+        cursorSX = (dx - vpX) / Math.max(vpW, 1) * sceneW;
+        cursorSY = (dy - vpY) / Math.max(vpH, 1) * sceneH;
+      }
+
+    }
+
+    // Hide-near-cursor (WE cursorEnter/leave visibility scripts, e.g. the
+    // butterfly that vanishes to reveal the art beneath): flagged layers
+    // fade out while the pointer is over their rect and fade back after it
+    // leaves. The factor is eased per frame and shared by both passes so the
+    // FBO reflection never shows a hidden layer.
+    for (const layer of renderLayers) {
+      let hideTarget = 0;
+      if (cursorActive && layer.cursorHide) {
+        const pad = Math.min(layer.w, layer.h) * 0.12 + 24;
+        if (Math.abs(cursorSX - layer.x) <= layer.w / 2 + pad &&
+            Math.abs(cursorSY - layer.y) <= layer.h / 2 + pad) hideTarget = 1;
+      }
+      const prevK = layer._cursorHideK || 0;
+      layer._cursorHideK = prevK + (hideTarget - prevK) * Math.min(1, dt * 7);
+    }
+    const hideAlpha = (layer) => (layer.alpha != null ? layer.alpha : 1.0) * (1 - 0.999 * (layer._cursorHideK || 0));
+
+    const needsReflection = renderLayers.some(layer => layer.isReflection);
+    if (needsReflection) ensureFbo(Math.min(sceneW, 2048), Math.min(sceneH, 1080));
 
     // Projection matrix mapping scene coords (0..sceneW, 0..sceneH) to clip space (-1..1)
     const proj = mat4Ortho(0, sceneW, 0, sceneH, -1000, 1000);
@@ -4091,62 +4191,65 @@ const WE_SCENE_PLAYER_HTML = `<!DOCTYPE html>
     // overlays/effect layers follow it. Preserve that order. Reversing it makes
     // an opaque base layer cover flow/sway shaders and every foreground component,
     // which presents live scenes as a wrongly cropped static texture.
-    const currentPeriod = activeTimePeriod(sceneData.timeSchedule, new Date());
-    const renderLayers = sceneData.layers.filter((layer) => layerEnabledByTime(layer, currentPeriod));
     // Pause inactive time-period videos immediately; only the author-selected
     // morning/day/dusk/night layer may consume decode resources.
     for (const layer of sceneData.layers) {
       if (layer.videoUrl) loadVideoTexture(layer, layerEnabledByTime(layer, currentPeriod));
     }
 
-    // Pass 1: Render background and sky layers into FBO for reflections
-    gl.bindFramebuffer(gl.FRAMEBUFFER, fbo);
-    gl.viewport(0, 0, fboWidth, fboHeight);
-    gl.clearColor(0, 0, 0, 0);
-    gl.clear(gl.COLOR_BUFFER_BIT);
+    const aPos = attribLocation(progBasic, 'a_pos');
+    const aUv = attribLocation(progBasic, 'a_uv');
+    // Ordinary wallpapers do not need a second full-scene render pass.
+    if (needsReflection) {
+      // Pass 1: Render background and sky layers into FBO for reflections
+      gl.bindFramebuffer(gl.FRAMEBUFFER, fbo);
+      gl.viewport(0, 0, fboWidth, fboHeight);
+      gl.clearColor(0, 0, 0, 0);
+      gl.clear(gl.COLOR_BUFFER_BIT);
 
-    gl.enable(gl.BLEND);
-    gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
+      gl.enable(gl.BLEND);
+      gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
 
-    gl.useProgram(progBasic);
-    gl.bindBuffer(gl.ARRAY_BUFFER, quadBuf);
-    const aPos = gl.getAttribLocation(progBasic, 'a_pos');
-    const aUv = gl.getAttribLocation(progBasic, 'a_uv');
-    gl.enableVertexAttribArray(aPos);
-    gl.enableVertexAttribArray(aUv);
-    gl.vertexAttribPointer(aPos, 2, gl.FLOAT, false, 16, 0);
-    gl.vertexAttribPointer(aUv, 2, gl.FLOAT, false, 16, 8);
+      gl.useProgram(progBasic);
+      gl.bindBuffer(gl.ARRAY_BUFFER, quadBuf);
+      gl.enableVertexAttribArray(aPos);
+      gl.enableVertexAttribArray(aUv);
+      gl.vertexAttribPointer(aPos, 2, gl.FLOAT, false, 16, 0);
+      gl.vertexAttribPointer(aUv, 2, gl.FLOAT, false, 16, 8);
 
-    gl.uniformMatrix4fv(gl.getUniformLocation(progBasic, 'u_proj'), false, proj);
-    gl.uniform1f(gl.getUniformLocation(progBasic, 'u_time'), elapsed);
-    gl.uniform4f(gl.getUniformLocation(progBasic, 'u_uvRect'), 0, 0, 1, 1);
-    gl.uniform1f(gl.getUniformLocation(progBasic, 'u_bright'), 1);
-    gl.uniform1f(gl.getUniformLocation(progBasic, 'u_power'), 1);
+      gl.uniformMatrix4fv(uniformLocation(progBasic, 'u_proj'), false, proj);
+      gl.uniform1f(uniformLocation(progBasic, 'u_time'), elapsed);
+      gl.uniform4f(uniformLocation(progBasic, 'u_uvRect'), 0, 0, 1, 1);
+      gl.uniform1f(uniformLocation(progBasic, 'u_bright'), 1);
+      gl.uniform1f(uniformLocation(progBasic, 'u_power'), 1);
 
-    // Render sky & upper layers into FBO
-    for (const layer of renderLayers) {
-      if (layer.isGround || layer.isReflection) continue;
-      const texRec = layer.videoUrl ? loadVideoTexture(layer, true) : loadTexture(layer.texUrl);
-      if (!texRec.loaded) continue;
+      // Render sky & upper layers into FBO
+      for (const layer of renderLayers) {
+        if (layer.isGround || layer.isReflection) continue;
+        const texRec = layer.videoUrl ? loadVideoTexture(layer, true) : loadTexture(layer.texUrl);
+        if (!texRec.loaded) continue;
 
-      const model = mat4Transform2D(layer.x, layer.y, layer.w, layer.h, layer.angle || 0);
-      gl.uniformMatrix4fv(gl.getUniformLocation(progBasic, 'u_model'), false, model);
-      gl.uniform1f(gl.getUniformLocation(progBasic, 'u_alpha'), layer.alpha != null ? layer.alpha : 1.0);
-      gl.uniform3f(gl.getUniformLocation(progBasic, 'u_tint'), 1, 1, 1);
-      gl.uniform1f(gl.getUniformLocation(progBasic, 'u_sway'), layer.sway || 0);
-      gl.uniform1f(gl.getUniformLocation(progBasic, 'u_sway_speed'), layer.swaySpeed || 1.0);
+        const model = mat4Transform2D(layer.x, layer.y, layer.w, layer.h, layer.angle || 0);
+        gl.uniformMatrix4fv(uniformLocation(progBasic, 'u_model'), false, model);
+        gl.uniform1f(uniformLocation(progBasic, 'u_alpha'), hideAlpha(layer));
+        gl.uniform3f(uniformLocation(progBasic, 'u_tint'), 1, 1, 1);
+        gl.uniform1f(uniformLocation(progBasic, 'u_sway'), layer.sway || 0);
+        gl.uniform1f(uniformLocation(progBasic, 'u_sway_speed'), layer.swaySpeed || 1.0);
 
-      gl.activeTexture(gl.TEXTURE0);
-      gl.bindTexture(gl.TEXTURE_2D, texRec.texture);
-      gl.uniform1i(gl.getUniformLocation(progBasic, 'u_tex'), 0);
-      gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+        gl.activeTexture(gl.TEXTURE0);
+        gl.bindTexture(gl.TEXTURE_2D, texRec.texture);
+        gl.uniform1i(uniformLocation(progBasic, 'u_tex'), 0);
+        gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+      }
+
     }
-
     // Pass 2: Render to screen viewport
     gl.bindFramebuffer(gl.FRAMEBUFFER, null);
     gl.viewport(vpX, vpY, vpW, vpH);
     gl.clearColor(0, 0, 0, 0);
     gl.clear(gl.COLOR_BUFFER_BIT);
+    gl.enable(gl.BLEND);
+    gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
 
     // Render all layers (Sky -> Ground -> Reflection -> Particles)
     for (const layer of renderLayers) {
@@ -4157,8 +4260,8 @@ const WE_SCENE_PLAYER_HTML = `<!DOCTYPE html>
 
         gl.useProgram(progReflection);
         gl.bindBuffer(gl.ARRAY_BUFFER, quadBuf);
-        const rPos = gl.getAttribLocation(progReflection, 'a_pos');
-        const rUv = gl.getAttribLocation(progReflection, 'a_uv');
+        const rPos = attribLocation(progReflection, 'a_pos');
+        const rUv = attribLocation(progReflection, 'a_uv');
         gl.enableVertexAttribArray(rPos);
         gl.enableVertexAttribArray(rUv);
         gl.vertexAttribPointer(rPos, 2, gl.FLOAT, false, 16, 0);
@@ -4167,32 +4270,33 @@ const WE_SCENE_PLAYER_HTML = `<!DOCTYPE html>
         // Draw the reflection quad at the layer's own rect (fullscreen for
         // legacy scene-wide reflection layers).
         const model = mat4Transform2D(layer.x, layer.y, layer.w, layer.h, layer.angle || 0);
-        gl.uniformMatrix4fv(gl.getUniformLocation(progReflection, 'u_proj'), false, proj);
-        gl.uniformMatrix4fv(gl.getUniformLocation(progReflection, 'u_model'), false, model);
-        gl.uniform4f(gl.getUniformLocation(progReflection, 'u_uvRect'), 0, 0, 1, 1);
-        gl.uniform1f(gl.getUniformLocation(progReflection, 'u_time'), elapsed);
-        gl.uniform1f(gl.getUniformLocation(progReflection, 'u_alpha'), 0.85);
+        gl.uniformMatrix4fv(uniformLocation(progReflection, 'u_proj'), false, proj);
+        gl.uniformMatrix4fv(uniformLocation(progReflection, 'u_model'), false, model);
+        gl.uniform4f(uniformLocation(progReflection, 'u_uvRect'), 0, 0, 1, 1);
+        gl.uniform1f(uniformLocation(progReflection, 'u_time'), elapsed);
+        gl.uniform1f(uniformLocation(progReflection, 'u_alpha'), 0.85);
 
         // Scene-uv rect of the quad (scene v grows downward, 0 at the top).
         const rectLeftU = (layer.x - layer.w / 2) / sceneW;
         const rectTopV = 1 - (layer.y + layer.h / 2) / sceneH;
-        gl.uniform4f(gl.getUniformLocation(progReflection, 'u_rect'),
+        gl.uniform4f(uniformLocation(progReflection, 'u_rect'),
           rectLeftU, rectTopV, layer.w / sceneW, layer.h / sceneH);
         // Water line follows the scene data when the parser resolved one;
         // otherwise keep the legacy 0.65 / 0.42 / 0.38 window.
         const waterLine = typeof layer.waterLine === 'number' ? layer.waterLine : 0.65;
         const depthScale = (1 - waterLine) / 0.35;
-        gl.uniform1f(gl.getUniformLocation(progReflection, 'u_waterLine'), waterLine);
-        gl.uniform2f(gl.getUniformLocation(progReflection, 'u_reflectRange'),
+        gl.uniform1f(uniformLocation(progReflection, 'u_waterLine'), waterLine);
+        gl.uniform2f(uniformLocation(progReflection, 'u_reflectRange'),
           waterLine - 0.23 * depthScale, 0.38 * depthScale);
+
 
         gl.activeTexture(gl.TEXTURE0);
         gl.bindTexture(gl.TEXTURE_2D, fboTex);
-        gl.uniform1i(gl.getUniformLocation(progReflection, 'u_fbo'), 0);
+        gl.uniform1i(uniformLocation(progReflection, 'u_fbo'), 0);
 
         gl.activeTexture(gl.TEXTURE1);
         gl.bindTexture(gl.TEXTURE_2D, maskRec.texture);
-        gl.uniform1i(gl.getUniformLocation(progReflection, 'u_mask'), 1);
+        gl.uniform1i(uniformLocation(progReflection, 'u_mask'), 1);
 
         gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
         gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
@@ -4208,28 +4312,28 @@ const WE_SCENE_PLAYER_HTML = `<!DOCTYPE html>
         if (!recs.every((r) => r.loaded)) continue;
         gl.useProgram(progFlow);
         gl.bindBuffer(gl.ARRAY_BUFFER, quadBuf);
-        const fPos = gl.getAttribLocation(progFlow, 'a_pos');
-        const fUv = gl.getAttribLocation(progFlow, 'a_uv');
+        const fPos = attribLocation(progFlow, 'a_pos');
+        const fUv = attribLocation(progFlow, 'a_uv');
         gl.enableVertexAttribArray(fPos);
         gl.enableVertexAttribArray(fUv);
         gl.vertexAttribPointer(fPos, 2, gl.FLOAT, false, 16, 0);
         gl.vertexAttribPointer(fUv, 2, gl.FLOAT, false, 16, 8);
         const model = mat4Transform2D(layer.x, layer.y, layer.w, layer.h, layer.angle || 0);
-        gl.uniformMatrix4fv(gl.getUniformLocation(progFlow, 'u_proj'), false, proj);
-        gl.uniformMatrix4fv(gl.getUniformLocation(progFlow, 'u_model'), false, model);
+        gl.uniformMatrix4fv(uniformLocation(progFlow, 'u_proj'), false, proj);
+        gl.uniformMatrix4fv(uniformLocation(progFlow, 'u_model'), false, model);
         const fcrop = layer.uvCrop || [0, 0, 1, 1];
-        gl.uniform4f(gl.getUniformLocation(progFlow, 'u_uvRect'), fcrop[0], fcrop[1], fcrop[2], fcrop[3]);
-        gl.uniform1f(gl.getUniformLocation(progFlow, 'u_time'), elapsed);
+        gl.uniform4f(uniformLocation(progFlow, 'u_uvRect'), fcrop[0], fcrop[1], fcrop[2], fcrop[3]);
+        gl.uniform1f(uniformLocation(progFlow, 'u_time'), elapsed);
         const nums = layer.nums || {};
-        gl.uniform3f(gl.getUniformLocation(progFlow, 'u_speeds'),
+        gl.uniform3f(uniformLocation(progFlow, 'u_speeds'),
           nums.Speed0 ?? 0.01, nums.Speed1 ?? 0.01, nums.Speed2 ?? 0.01);
-        gl.uniform1f(gl.getUniformLocation(progFlow, 'u_amp'), nums.Amount ?? 1);
-        gl.uniform1f(gl.getUniformLocation(progFlow, 'u_bright'), nums.Bright ?? 1);
+        gl.uniform1f(uniformLocation(progFlow, 'u_amp'), nums.Amount ?? 1);
+        gl.uniform1f(uniformLocation(progFlow, 'u_bright'), nums.Bright ?? 1);
         const units = ['u_mask', 'u_l1', 'u_l2', 'u_l3'];
         for (let ui = 0; ui < 4; ui++) {
           gl.activeTexture(gl.TEXTURE0 + ui);
           gl.bindTexture(gl.TEXTURE_2D, recs[ui].texture);
-          gl.uniform1i(gl.getUniformLocation(progFlow, units[ui]), ui);
+          gl.uniform1i(uniformLocation(progFlow, units[ui]), ui);
         }
         gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
         gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
@@ -4243,33 +4347,33 @@ const WE_SCENE_PLAYER_HTML = `<!DOCTYPE html>
         if (!recs.every((r) => r.loaded)) continue;
         gl.useProgram(progFlag);
         gl.bindBuffer(gl.ARRAY_BUFFER, quadBuf);
-        const flPos = gl.getAttribLocation(progFlag, 'a_pos');
-        const flUv = gl.getAttribLocation(progFlag, 'a_uv');
+        const flPos = attribLocation(progFlag, 'a_pos');
+        const flUv = attribLocation(progFlag, 'a_uv');
         gl.enableVertexAttribArray(flPos);
         gl.enableVertexAttribArray(flUv);
         gl.vertexAttribPointer(flPos, 2, gl.FLOAT, false, 16, 0);
         gl.vertexAttribPointer(flUv, 2, gl.FLOAT, false, 16, 8);
         const model = mat4Transform2D(layer.x, layer.y, layer.w, layer.h, layer.angle || 0);
-        gl.uniformMatrix4fv(gl.getUniformLocation(progFlag, 'u_proj'), false, proj);
-        gl.uniformMatrix4fv(gl.getUniformLocation(progFlag, 'u_model'), false, model);
+        gl.uniformMatrix4fv(uniformLocation(progFlag, 'u_proj'), false, proj);
+        gl.uniformMatrix4fv(uniformLocation(progFlag, 'u_model'), false, model);
         const flcrop = layer.uvCrop || [0, 0, 1, 1];
-        gl.uniform4f(gl.getUniformLocation(progFlag, 'u_uvRect'), flcrop[0], flcrop[1], flcrop[2], flcrop[3]);
-        gl.uniform1f(gl.getUniformLocation(progFlag, 'u_time'), elapsed);
+        gl.uniform4f(uniformLocation(progFlag, 'u_uvRect'), flcrop[0], flcrop[1], flcrop[2], flcrop[3]);
+        gl.uniform1f(uniformLocation(progFlag, 'u_time'), elapsed);
         const fnums = layer.nums || {};
-        gl.uniform1f(gl.getUniformLocation(progFlag, 'u_speed'), fnums.Speed ?? 0.4);
-        gl.uniform1f(gl.getUniformLocation(progFlag, 'u_strength'), fnums.Strength ?? 0.5);
+        gl.uniform1f(uniformLocation(progFlag, 'u_speed'), fnums.Speed ?? 0.4);
+        gl.uniform1f(uniformLocation(progFlag, 'u_strength'), fnums.Strength ?? 0.5);
         const fcols = layer.userColors || {};
         const fc1 = fcols.color1 || [0, 0, 0];
         const fc2 = fcols.color2 || [0, 0, 0];
         const fc3 = fcols.color3 || [1, 1, 1];
-        gl.uniform3f(gl.getUniformLocation(progFlag, 'u_color1'), fc1[0], fc1[1], fc1[2]);
-        gl.uniform3f(gl.getUniformLocation(progFlag, 'u_color2'), fc2[0], fc2[1], fc2[2]);
-        gl.uniform3f(gl.getUniformLocation(progFlag, 'u_color3'), fc3[0], fc3[1], fc3[2]);
+        gl.uniform3f(uniformLocation(progFlag, 'u_color1'), fc1[0], fc1[1], fc1[2]);
+        gl.uniform3f(uniformLocation(progFlag, 'u_color2'), fc2[0], fc2[1], fc2[2]);
+        gl.uniform3f(uniformLocation(progFlag, 'u_color3'), fc3[0], fc3[1], fc3[2]);
         const funits = ['u_tex', 'u_normal', 'u_cloth'];
         for (let ui = 0; ui < 3; ui++) {
           gl.activeTexture(gl.TEXTURE0 + ui);
           gl.bindTexture(gl.TEXTURE_2D, recs[ui].texture);
-          gl.uniform1i(gl.getUniformLocation(progFlag, funits[ui]), ui);
+          gl.uniform1i(uniformLocation(progFlag, funits[ui]), ui);
         }
         gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
         gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
@@ -4277,33 +4381,137 @@ const WE_SCENE_PLAYER_HTML = `<!DOCTYPE html>
         continue;
       }
 
+      // WE xray layer (cursor reveal, e.g. the butterfly that vanishes to
+      // show the art beneath): the blend texture replaces the base around
+      // the pointer. Without a resolved blend texture the layer falls
+      // through to the standard branch below.
+      if (layer.xrayBlendUrl) {
+        const baseRec = layer.videoUrl ? loadVideoTexture(layer, true) : loadTexture(layer.texUrl);
+        const blendRec = loadTexture(layer.xrayBlendUrl);
+        if (baseRec.loaded && blendRec.loaded) {
+          gl.useProgram(progXray);
+          gl.bindBuffer(gl.ARRAY_BUFFER, quadBuf);
+          const xPos = attribLocation(progXray, 'a_pos');
+          const xUv = attribLocation(progXray, 'a_uv');
+          gl.enableVertexAttribArray(xPos);
+          gl.enableVertexAttribArray(xUv);
+          gl.vertexAttribPointer(xPos, 2, gl.FLOAT, false, 16, 0);
+          gl.vertexAttribPointer(xUv, 2, gl.FLOAT, false, 16, 8);
+          const xModel = mat4Transform2D(layer.x, layer.y, layer.w, layer.h, layer.angle || 0);
+          gl.uniformMatrix4fv(uniformLocation(progXray, 'u_proj'), false, proj);
+          gl.uniformMatrix4fv(uniformLocation(progXray, 'u_model'), false, xModel);
+          const xcrop = layer.uvCrop || [0, 0, 1, 1];
+          gl.uniform4f(uniformLocation(progXray, 'u_uvRect'), xcrop[0], xcrop[1], xcrop[2], xcrop[3]);
+          gl.uniform1f(uniformLocation(progXray, 'u_alpha'), hideAlpha(layer));
+          gl.uniform2f(uniformLocation(progXray, 'u_cursorUV'),
+            (cursorSX - (layer.x - layer.w / 2)) / layer.w,
+            ((layer.y + layer.h / 2) - cursorSY) / layer.h);
+          gl.uniform2f(uniformLocation(progXray, 'u_xrayAspect'), layer.w / Math.max(layer.h, 1), 1);
+          gl.uniform1f(uniformLocation(progXray, 'u_pointerScale'),
+            1 / Math.max(layer.xraySize || 0.2, 0.02));
+          gl.uniform1f(uniformLocation(progXray, 'u_multiply'), layer.xrayMultiply ?? 1);
+          gl.uniform1f(uniformLocation(progXray, 'u_cursorOn'), cursorActive ? 1 : 0);
+          gl.activeTexture(gl.TEXTURE0);
+          gl.bindTexture(gl.TEXTURE_2D, baseRec.texture);
+          gl.uniform1i(uniformLocation(progXray, 'u_tex'), 0);
+          gl.activeTexture(gl.TEXTURE1);
+          gl.bindTexture(gl.TEXTURE_2D, blendRec.texture);
+          gl.uniform1i(uniformLocation(progXray, 'u_blend'), 1);
+          gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
+          gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+          gl.activeTexture(gl.TEXTURE0);
+          continue;
+        }
+      }
+
+      // WE shake effect (e.g. eye blinking, breathing UV deformation)
+      if (layer.shakeEffect) {
+        const shake = layer.shakeEffect;
+        const baseRec = layer.videoUrl ? loadVideoTexture(layer, true) : loadTexture(layer.texUrl);
+        const flowRec = shake.flowMaskUrl ? loadTexture(shake.flowMaskUrl) : null;
+        const maskRec = shake.opacityMaskUrl ? loadTexture(shake.opacityMaskUrl) : null;
+        if (baseRec.loaded && (!flowRec || flowRec.loaded) && (!maskRec || maskRec.loaded)) {
+          gl.enable(gl.BLEND);
+          gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
+          gl.useProgram(progShake);
+          gl.bindBuffer(gl.ARRAY_BUFFER, quadBuf);
+          const sPos = attribLocation(progShake, 'a_pos');
+          const sUv = attribLocation(progShake, 'a_uv');
+          gl.enableVertexAttribArray(sPos);
+          gl.enableVertexAttribArray(sUv);
+          gl.vertexAttribPointer(sPos, 2, gl.FLOAT, false, 16, 0);
+          gl.vertexAttribPointer(sUv, 2, gl.FLOAT, false, 16, 8);
+          const sModel = mat4Transform2D(layer.x, layer.y, layer.w, layer.h, layer.angle || 0);
+          gl.uniformMatrix4fv(uniformLocation(progShake, 'u_proj'), false, proj);
+          gl.uniformMatrix4fv(uniformLocation(progShake, 'u_model'), false, sModel);
+          const scrop = layer.uvCrop || [0, 0, 1, 1];
+          gl.uniform4f(uniformLocation(progShake, 'u_uvRect'), scrop[0], scrop[1], scrop[2], scrop[3]);
+          gl.uniform1f(uniformLocation(progShake, 'u_time'), elapsed);
+          gl.uniform1f(uniformLocation(progShake, 'u_speed'), shake.speed || 1.0);
+          gl.uniform1f(uniformLocation(progShake, 'u_strength'), shake.strength || 0.1);
+          gl.uniform2f(uniformLocation(progShake, 'u_friction'), shake.friction[0], shake.friction[1]);
+          gl.uniform2f(uniformLocation(progShake, 'u_bounds'), shake.bounds[0], shake.bounds[1]);
+          gl.uniform1i(uniformLocation(progShake, 'u_direction'), shake.direction || 0);
+          gl.uniform1f(uniformLocation(progShake, 'u_alpha'), hideAlpha(layer));
+          const lnums = layer.nums || {};
+          gl.uniform1f(uniformLocation(progShake, 'u_bright'), lnums.Bright ?? 1);
+          gl.uniform1f(uniformLocation(progShake, 'u_power'), lnums.Power ?? 1);
+
+          gl.activeTexture(gl.TEXTURE0);
+          gl.bindTexture(gl.TEXTURE_2D, baseRec.texture);
+          gl.uniform1i(uniformLocation(progShake, 'u_tex'), 0);
+
+          if (flowRec) {
+            gl.activeTexture(gl.TEXTURE1);
+            gl.bindTexture(gl.TEXTURE_2D, flowRec.texture);
+            gl.uniform1i(uniformLocation(progShake, 'u_flow'), 1);
+          }
+          if (maskRec) {
+            gl.activeTexture(gl.TEXTURE2);
+            gl.bindTexture(gl.TEXTURE_2D, maskRec.texture);
+            gl.uniform1i(uniformLocation(progShake, 'u_mask'), 2);
+            gl.uniform1i(uniformLocation(progShake, 'u_hasMask'), 1);
+          } else {
+            gl.uniform1i(uniformLocation(progShake, 'u_hasMask'), 0);
+          }
+          gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+          gl.activeTexture(gl.TEXTURE0);
+          continue;
+        }
+      }
+
       // Standard image or embedded-video layer.
       const texRec = layer.videoUrl ? loadVideoTexture(layer, true) : loadTexture(layer.texUrl);
       if (!texRec.loaded) continue;
 
+      gl.enable(gl.BLEND);
+      gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
       gl.useProgram(progBasic);
       gl.bindBuffer(gl.ARRAY_BUFFER, quadBuf);
+      gl.enableVertexAttribArray(aPos);
+      gl.enableVertexAttribArray(aUv);
       gl.vertexAttribPointer(aPos, 2, gl.FLOAT, false, 16, 0);
       gl.vertexAttribPointer(aUv, 2, gl.FLOAT, false, 16, 8);
 
       const crop = layer.uvCrop || [0, 0, 1, 1];
-      gl.uniform4f(gl.getUniformLocation(progBasic, 'u_uvRect'), crop[0], crop[1], crop[2], crop[3]);
+      gl.uniform4f(uniformLocation(progBasic, 'u_uvRect'), crop[0], crop[1], crop[2], crop[3]);
       const lnums = layer.nums || {};
-      gl.uniform1f(gl.getUniformLocation(progBasic, 'u_bright'), lnums.Bright ?? 1);
-      gl.uniform1f(gl.getUniformLocation(progBasic, 'u_power'), lnums.Power ?? 1);
+      gl.uniform1f(uniformLocation(progBasic, 'u_bright'), lnums.Bright ?? 1);
+      gl.uniform1f(uniformLocation(progBasic, 'u_power'), lnums.Power ?? 1);
 
       const model = mat4Transform2D(layer.x, layer.y, layer.w, layer.h, layer.angle || 0);
-      gl.uniformMatrix4fv(gl.getUniformLocation(progBasic, 'u_proj'), false, proj);
-      gl.uniformMatrix4fv(gl.getUniformLocation(progBasic, 'u_model'), false, model);
-      gl.uniform1f(gl.getUniformLocation(progBasic, 'u_time'), elapsed);
-      gl.uniform1f(gl.getUniformLocation(progBasic, 'u_alpha'), layer.alpha != null ? layer.alpha : 1.0);
-      gl.uniform3f(gl.getUniformLocation(progBasic, 'u_tint'), 1, 1, 1);
-      gl.uniform1f(gl.getUniformLocation(progBasic, 'u_sway'), layer.sway || 0);
-      gl.uniform1f(gl.getUniformLocation(progBasic, 'u_sway_speed'), layer.swaySpeed || 1.0);
+      gl.uniformMatrix4fv(uniformLocation(progBasic, 'u_proj'), false, proj);
+      gl.uniformMatrix4fv(uniformLocation(progBasic, 'u_model'), false, model);
+      gl.uniform1f(uniformLocation(progBasic, 'u_time'), elapsed);
+      gl.uniform1f(uniformLocation(progBasic, 'u_alpha'), hideAlpha(layer));
+      gl.uniform3f(uniformLocation(progBasic, 'u_tint'), 1, 1, 1);
+
+      gl.uniform1f(uniformLocation(progBasic, 'u_sway'), layer.sway || 0);
+      gl.uniform1f(uniformLocation(progBasic, 'u_sway_speed'), layer.swaySpeed || 1.0);
 
       gl.activeTexture(gl.TEXTURE0);
       gl.bindTexture(gl.TEXTURE_2D, texRec.texture);
-      gl.uniform1i(gl.getUniformLocation(progBasic, 'u_tex'), 0);
+      gl.uniform1i(uniformLocation(progBasic, 'u_tex'), 0);
       gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
     }
 
@@ -4311,14 +4519,14 @@ const WE_SCENE_PLAYER_HTML = `<!DOCTYPE html>
     if (activeParticles.length > 0) {
       gl.useProgram(progParticle);
       gl.bindBuffer(gl.ARRAY_BUFFER, quadBuf);
-      const pPos = gl.getAttribLocation(progParticle, 'a_pos');
-      const pUv = gl.getAttribLocation(progParticle, 'a_uv');
+      const pPos = attribLocation(progParticle, 'a_pos');
+      const pUv = attribLocation(progParticle, 'a_uv');
       gl.enableVertexAttribArray(pPos);
       gl.enableVertexAttribArray(pUv);
       gl.vertexAttribPointer(pPos, 2, gl.FLOAT, false, 16, 0);
       gl.vertexAttribPointer(pUv, 2, gl.FLOAT, false, 16, 8);
-      gl.uniformMatrix4fv(gl.getUniformLocation(progParticle, 'u_proj'), false, proj);
-      gl.uniform4f(gl.getUniformLocation(progParticle, 'u_uvRect'), 0, 0, 1, 1);
+      gl.uniformMatrix4fv(uniformLocation(progParticle, 'u_proj'), false, proj);
+      gl.uniform4f(uniformLocation(progParticle, 'u_uvRect'), 0, 0, 1, 1);
 
       gl.blendFunc(gl.SRC_ALPHA, gl.ONE); // Additive luminous particles
 
@@ -4329,7 +4537,7 @@ const WE_SCENE_PLAYER_HTML = `<!DOCTYPE html>
         if (texRec && texRec.loaded) {
           gl.activeTexture(gl.TEXTURE0);
           gl.bindTexture(gl.TEXTURE_2D, texRec.texture);
-          gl.uniform1i(gl.getUniformLocation(progParticle, 'u_tex'), 0);
+          gl.uniform1i(uniformLocation(progParticle, 'u_tex'), 0);
         }
 
         // Draw trail if meteor
@@ -4339,40 +4547,82 @@ const WE_SCENE_PLAYER_HTML = `<!DOCTYPE html>
             const tRatio = (ti + 1) / p.trail.length;
             const tAlpha = alpha * tRatio * 0.6;
             const tModel = mat4Transform2D(tp.x, tp.y, p.size * tRatio * 1.5, p.size * 0.4, Math.atan2(p.vy, p.vx));
-            gl.uniformMatrix4fv(gl.getUniformLocation(progParticle, 'u_model'), false, tModel);
-            gl.uniform4f(gl.getUniformLocation(progParticle, 'u_color'), p.color[0], p.color[1], p.color[2], tAlpha);
+            gl.uniformMatrix4fv(uniformLocation(progParticle, 'u_model'), false, tModel);
+            gl.uniform4f(uniformLocation(progParticle, 'u_color'), p.color[0], p.color[1], p.color[2], tAlpha);
             gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
           }
         }
 
         const model = mat4Transform2D(p.x, p.y, p.size * (p.system.type === 'meteor' ? 3 : 1), p.size, Math.atan2(p.vy, p.vx));
-        gl.uniformMatrix4fv(gl.getUniformLocation(progParticle, 'u_model'), false, model);
-        gl.uniform4f(gl.getUniformLocation(progParticle, 'u_color'), p.color[0], p.color[1], p.color[2], alpha * p.color[3]);
+        gl.uniformMatrix4fv(uniformLocation(progParticle, 'u_model'), false, model);
+        gl.uniform4f(uniformLocation(progParticle, 'u_color'), p.color[0], p.color[1], p.color[2], alpha * p.color[3]);
         gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
       }
       gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
     }
-
-    requestAnimationFrame(render);
   }
 
-  // Crash guard: a render exception must not freeze the wallpaper silently.
-  function render(now) {
-    try {
-      if (contextLost) { requestAnimationFrame(render); return; }
-      renderFrame(now);
-    } catch (e) {
-      if (!window.__weRenderErr) {
-        window.__weRenderErr = 1;
-        console.error('we-scene-player render error:', e && e.stack || String(e));
-      }
-      requestAnimationFrame(render);
+  // One scheduler owns both handles. Cap wallpaper work at 30 FPS even on
+  // 144/240 Hz displays, and never poll while waiting, paused or context-lost.
+  const frameInterval = 1000 / 30;
+  let rafId = null, timerId = null, nextFrameAt = 0;
+  function cancelRender() {
+    if (rafId !== null) cancelAnimationFrame(rafId);
+    if (timerId !== null) clearTimeout(timerId);
+    rafId = timerId = null;
+  }
+  function scheduleRender() {
+    if (disposed || isPaused || contextLost || !sceneData || rafId !== null || timerId !== null) return;
+    const delay = nextFrameAt - performance.now();
+    if (delay > 0) {
+      timerId = setTimeout(() => { timerId = null; scheduleRender(); }, delay);
+    } else {
+      rafId = requestAnimationFrame(render);
     }
+  }
+  function stopWithError(error) {
+    console.error('we-scene-player render error:', error && error.stack || String(error));
+    dispose();
+    window.parent.postMessage({ type: 'dsh-scene-failed' }, '*');
+  }
+  function dispose() {
+    if (disposed) return;
+    disposed = true;
+    cancelRender();
+    for (const rec of videoTextureCache.values()) {
+      rec.video.pause();
+      rec.video.removeAttribute('src');
+      rec.video.load();
+    }
+    videoTextureCache.clear();
+    textureCache.clear();
+    activeParticles = [];
+    gl.getExtension('WEBGL_lose_context')?.loseContext();
+  }
+  window.__hermesSceneDispose = dispose;
+  window.addEventListener('pagehide', dispose);
+  function render(now) {
+    rafId = null;
+    if (disposed || isPaused || contextLost) return;
+    // Compositor timestamps can precede delivery on a busy renderer. Enforce
+    // the deadline against the actual clock, not a stale rAF timestamp.
+    const clock = performance.now();
+    if (clock < nextFrameAt) { scheduleRender(); return; }
+    try {
+      renderFrame(clock);
+    } catch (e) {
+      stopWithError(e);
+      return;
+    }
+    nextFrameAt = clock + frameInterval;
+    scheduleRender();
   }
 
   canvas.addEventListener('webglcontextlost', (event) => {
     event.preventDefault();
     contextLost = true;
+    cancelRender();
+    for (const rec of videoTextureCache.values()) rec.video.pause();
   });
   canvas.addEventListener('webglcontextrestored', () => {
     // WebGL objects are invalid after restoration. Ask the embedding
@@ -4380,7 +4630,7 @@ const WE_SCENE_PLAYER_HTML = `<!DOCTYPE html>
     // stale programs/textures. The player frame is sandboxed without
     // allow-same-origin, so the embedding page's origin is unknown here;
     // '*' delivers to the window the event source check identifies.
-    window.parent.postMessage({ type: 'dsh-scene-needs-reload' }, '*');
+    if (!disposed) window.parent.postMessage({ type: 'dsh-scene-needs-reload' }, '*');
   });
 
   // Load manifest
@@ -4388,11 +4638,12 @@ const WE_SCENE_PLAYER_HTML = `<!DOCTYPE html>
   fetch('/api/skin-center/we/scene-manifest/' + token)
     .then(res => res.json())
     .then(data => {
-      if (data.ok && data.manifest) {
+      if (!disposed && data.ok && data.manifest) {
         sceneData = data.manifest;
+        scheduleRender();
       }
     })
-    .catch(err => console.error('Failed to load scene manifest', err));
+    .catch(stopWithError);
 
   // Listen for controller messages; only the embedding parent may steer the
   // player. Origin cannot filter here: the player runs sandboxed without
@@ -4403,10 +4654,31 @@ const WE_SCENE_PLAYER_HTML = `<!DOCTYPE html>
     if (ev.source !== window.parent) return;
     const msg = ev.data;
     if (!msg || typeof msg !== 'object') return;
+    if (disposed) return;
     if (msg.type === 'dsh-set-fit' && msg.fit) {
       fitMode = msg.fit;
     } else if (msg.type === 'dsh-set-pause') {
       isPaused = !!msg.paused;
+      if (isPaused) cancelRender();
+      for (const rec of videoTextureCache.values()) {
+        if (isPaused) {
+          rec.video.pause();
+        } else if (rec.enabled && !contextLost) {
+          void rec.video.play().catch(() => {});
+        }
+      }
+      if (!isPaused) {
+        lastTime = performance.now();
+        scheduleRender();
+      }
+    } else if (msg.type === 'dsh-set-cursor') {
+      // Mirrored pointer from the host (the iframe itself never gets input).
+      if (Number.isFinite(msg.x)) cursorX = Math.min(1, Math.max(0, msg.x));
+      if (Number.isFinite(msg.y)) cursorY = Math.min(1, Math.max(0, msg.y));
+      mouseX = cursorX;
+      mouseY = cursorY;
+      if ('active' in msg) cursorActive = !!msg.active;
+      else cursorActive = true;
     } else if (msg.type === 'dsh-recover-renderer') {
       if (gl.isContextLost()) {
         const ext = gl.getExtension('WEBGL_lose_context');
@@ -4414,12 +4686,11 @@ const WE_SCENE_PLAYER_HTML = `<!DOCTYPE html>
         else window.parent.postMessage({ type: 'dsh-scene-needs-reload' }, '*');
       } else {
         // Force an immediate fresh frame after compositor/theme changes.
-        renderFrame(performance.now());
+        scheduleRender();
       }
     }
   });
 
-  requestAnimationFrame(render);
 })();
 </script>
 </body>
@@ -4493,6 +4764,44 @@ const WE_SHIM_JS = [
   '  };',
   '  window.wallpaperRegisterLEDColorListener = function () {};',
   '  window.wallpaperRegisterFPSListener = function () {};',
+  '  // Cursor bridge: the backdrop iframe never receives input',
+  '  // (pointer-events none), so the host mirrors the real pointer position',
+  '  // via hermes-we-cursor messages. Synthesized mousemove events let pages',
+  '  // hide elements near the cursor exactly as if the pointer hovered the',
+  '  // page itself (WE forwards real mouse into CEF). Unchanged positions',
+  '  // skip the dispatch so elementFromPoint layout work stays bounded.',
+  '  var cursorPos = { x: 0.5, y: 0.5, active: false };',
+  '  window.__hermesCursor = cursorPos;',
+  '  var lastDispatch = null;',
+  '  var synthCursor = function () {',
+  '    try {',
+  '      var cx = cursorPos.x * window.innerWidth;',
+  '      var cy = cursorPos.y * window.innerHeight;',
+  '      if (lastDispatch && lastDispatch[0] === cx && lastDispatch[1] === cy) return;',
+  '      lastDispatch = [cx, cy];',
+  '      var target = null;',
+  '      try { target = document.elementFromPoint(cx, cy); } catch (e) { target = null; }',
+  '      if (!target) target = document.documentElement || document;',
+  '      var opts = { bubbles: true, cancelable: true, clientX: cx, clientY: cy };',
+  '      var evt = null;',
+  '      try { evt = new MouseEvent("mousemove", opts); }',
+  '      catch (e) {',
+  '        evt = document.createEvent("MouseEvents");',
+  '        evt.initMouseEvent("mousemove", true, true, window, 0, cx, cy, cx, cy, false, false, false, false, 0, null);',
+  '      }',
+  '      target.dispatchEvent(evt);',
+  '    } catch (e) {}',
+  '  };',
+  '  window.addEventListener("message", function (ev) {',
+  '    if (ev.source !== window.parent) return;',
+  '    var m = ev.data;',
+  '    if (!m || m.type !== "hermes-we-cursor") return;',
+  '    if (isFinite(m.x)) cursorPos.x = Math.min(1, Math.max(0, m.x));',
+  '    if (isFinite(m.y)) cursorPos.y = Math.min(1, Math.max(0, m.y));',
+  '    if ("active" in m) cursorPos.active = !!m.active;',
+  '    else cursorPos.active = true;',
+  '    if (cursorPos.active) synthCursor();',
+  '  });',
   '})();',
   '',
 ].join('\n')
@@ -4500,6 +4809,11 @@ const WE_SHIM_JS = [
 // ─── Scene Player Bridge ─────────────────────────────────────
 
 /** Feed the DSH WebGL player through a sandboxed srcdoc instead of its DSH HTTP routes. */
+// The vendored player document must be a real import: the standalone ZCode
+// bundle only includes modules reachable through imports (the concatenated
+// Hermes artifact instead defines it as a global section).
+
+
 function scenePlayerHtml(sound = false, volume = 100) {
   const audioSettings = `window.__hermesSceneSound=${Boolean(sound)};window.__hermesSceneVolume=${Math.min(100, Math.max(0, Number.isFinite(Number(volume)) ? Number(volume) : 100)) / 100};`
   const shim = `<script>
@@ -4538,12 +4852,26 @@ function replaceResources(value, URLs) {
   return value
 }
 
-async function loadSceneManifest(bridge, manifestPath) {
+async function loadSceneManifest(bridge, manifestPath, prepareScene = null, signal = null) {
   if (!bridge?.readFileText || !bridge?.readFileDataUrl) throw new Error('Hermes local file bridge unavailable')
-  const file = await bridge.readFileText(manifestPath)
-  if (file?.truncated || !file?.text) throw new Error('Scene manifest is missing or truncated')
-  const data = JSON.parse(file.text)
-  if (!data.manifest || typeof data.resources !== 'object') throw new Error('Scene manifest is invalid')
+  const readManifest = async path => {
+    signal?.throwIfAborted()
+    const file = await bridge.readFileText(path)
+    signal?.throwIfAborted()
+    if (file?.truncated || !file?.text) throw new Error('Scene manifest is missing or truncated')
+    const data = JSON.parse(file.text)
+    if (!data.manifest || !data.resources || typeof data.resources !== 'object') throw new Error('Scene manifest is invalid')
+    return data
+  }
+  let data = await readManifest(manifestPath)
+  if (Number(data.parserVersion || 0) < 6 && prepareScene && typeof data.scenePath === 'string') {
+    const prepared = await prepareScene(data.scenePath.replace(/[\\/][^\\/]+$/, ''))
+    signal?.throwIfAborted()
+    if (!prepared?.ok || !prepared.manifest || !prepared.manifestPath) {
+      throw Object.assign(new Error(prepared?.error || 'Scene cache refresh failed'), { code: prepared?.code })
+    }
+    data = await readManifest(prepared.manifestPath)
+  }
   const paths = Object.entries(data.resources)
   const URLs = {}
   const objectUrls = []
@@ -4552,19 +4880,36 @@ async function loadSceneManifest(bridge, manifestPath) {
     // Read sequentially: several 100 MiB video layers can otherwise multiply
     // transient base64 and decoded buffers until the Hermes renderer runs OOM.
     for (const [url, path] of paths) {
+      signal?.throwIfAborted()
       if (typeof path !== 'string') continue
-      let data
-      try { data = await bridge.readFileDataUrl(path) }
-      catch {
-        if (!bridge.readFileDataUrlForAttach) throw new Error('Scene resource exceeds the Hermes file-read limit')
-        data = await bridge.readFileDataUrlForAttach(path)
+      let objectUrl = null
+      let blob = null
+      try {
+        if (bridge.readFileObjectUrl) {
+          // Fast path: the bridge hands back a direct blob object URL.
+          objectUrl = await bridge.readFileObjectUrl(path)
+          signal?.throwIfAborted()
+          blob = await fetch(objectUrl, { signal }).then(response => response.blob())
+        } else {
+          let data
+          try { data = await bridge.readFileDataUrl(path) }
+          catch {
+            if (!bridge.readFileDataUrlForAttach) throw new Error('Scene resource exceeds the Hermes file-read limit')
+            data = await bridge.readFileDataUrlForAttach(path)
+          }
+          signal?.throwIfAborted()
+          blob = await fetch(data, { signal }).then(response => response.blob())
+        }
+        signal?.throwIfAborted()
+        totalBytes += blob.size
+        if (totalBytes > 512 * 1024 * 1024) throw new Error('Scene resources exceed the 512 MiB renderer budget')
+        if (!objectUrl) objectUrl = URL.createObjectURL(blob)
+        objectUrls.push(objectUrl)
+        URLs[url] = objectUrl
+      } catch (error) {
+        if (objectUrl) URL.revokeObjectURL(objectUrl)
+        throw error
       }
-      const blob = await fetch(data).then(response => response.blob())
-      totalBytes += blob.size
-      if (totalBytes > 512 * 1024 * 1024) throw new Error('Scene resources exceed the 512 MiB renderer budget')
-      const objectUrl = URL.createObjectURL(blob)
-      objectUrls.push(objectUrl)
-      URLs[url] = objectUrl
     }
     return { manifest: replaceResources(data.manifest, URLs), framePath: data.framePath,
       missing: data.missing || [], resourceCount: Object.keys(URLs).length,
@@ -4593,7 +4938,7 @@ async function loadWebWallpaper(bridge, mainPath, shimSource = WE_SHIM_JS) {
     for (const entry of listing?.entries || []) {
       if (count >= 400) break
       const relative = entry.path.slice(root.length).replace(/^[\\/]+/, '').replace(/\\/g, '/')
-      if (!relative || relative.includes('..') || !entry.path.toLowerCase().startsWith(root.toLowerCase())) continue
+      if (!relative || relative.includes('..') || !entry.path.toLowerCase().startsWith((root + '\\').toLowerCase())) continue
       if (entry.isDirectory) {
         if (depth < 4) queue.push({ dir: entry.path, depth: depth + 1 })
       } else {
@@ -4622,12 +4967,13 @@ async function loadWebWallpaper(bridge, mainPath, shimSource = WE_SHIM_JS) {
       const text = await readText(absolute)
       if (text !== null) styles.set(relative, text)
     } else {
-      try {
-        const data = await bridge.readFileDataUrl(absolute)
-        dataBytes += data.length
-        if (dataBytes > 64 * 1024 * 1024) throw new Error('web wallpaper assets exceed 64 MiB')
-        assets.set(relative, data)
-      } catch { /* A decorative asset can be absent; the page still loads. */ }
+      let data
+      try { data = await bridge.readFileDataUrl(absolute) }
+      catch { continue /* A decorative asset can be absent. */ }
+      if (typeof data !== 'string') continue
+      dataBytes += data.length
+      if (dataBytes > 64 * 1024 * 1024) throw new Error('web wallpaper assets exceed 64 MiB')
+      assets.set(relative, data)
     }
   }
   const basenameCounts = new Map()
@@ -4699,11 +5045,11 @@ function TryOnBanner({ store, onApply, onExit }) {
           jsxs('div', {
             children: [
               jsx('div', {
-                className: 'text-sm font-semibold text-foreground',
+                className: 'text-ui-base font-semibold text-foreground',
                 children: t('tryOnBannerTitle', skinName)
               }),
               jsx('div', {
-                className: 'text-xs text-muted-foreground',
+                className: 'text-ui-sm text-muted-foreground',
                 children: t('tryOnBannerDesc')
               })
             ]
@@ -4868,8 +5214,8 @@ function CustomThemeStudio({ store, onApplySkin }) {
       jsxs('div', {
         className: 'flex flex-col gap-1',
         children: [
-          jsx('h2', { className: 'text-lg font-semibold text-foreground', children: t('themeStudioTitle') }),
-          jsx('p', { className: 'text-xs text-muted-foreground', children: t('themeStudioDesc') })
+          jsx('h2', { className: 'text-xl font-semibold tracking-tight text-foreground', children: t('themeStudioTitle') }),
+          jsx('p', { className: 'text-ui-sm text-muted-foreground', children: t('themeStudioDesc') })
         ]
       }),
       jsxs('div', {
@@ -4879,7 +5225,7 @@ function CustomThemeStudio({ store, onApplySkin }) {
           jsxs('div', {
             className: 'flex flex-col gap-2',
             children: [
-              jsx('label', { className: 'text-xs font-medium text-foreground', children: t('customSkinName') }),
+              jsx('label', { className: 'text-ui-sm font-medium text-foreground', children: t('customSkinName') }),
               jsx(Input, {
                 value: name,
                 onChange: e => setName(e.target.value),
@@ -4890,7 +5236,7 @@ function CustomThemeStudio({ store, onApplySkin }) {
           jsxs('div', {
             className: 'flex flex-col gap-2',
             children: [
-              jsx('label', { className: 'text-xs font-medium text-foreground', children: t('accentColor') }),
+              jsx('label', { className: 'text-ui-sm font-medium text-foreground', children: t('accentColor') }),
               jsxs('div', {
                 className: 'flex items-center gap-2',
                 children: [
@@ -4903,7 +5249,7 @@ function CustomThemeStudio({ store, onApplySkin }) {
                   jsx(Input, {
                     value: accent,
                     onChange: e => setAccent(e.target.value),
-                    className: 'font-mono text-xs'
+                    className: 'font-mono text-ui-sm'
                   })
                 ]
               })
@@ -4912,7 +5258,7 @@ function CustomThemeStudio({ store, onApplySkin }) {
           jsxs('div', {
             className: 'flex flex-col gap-2',
             children: [
-              jsx('label', { className: 'text-xs font-medium text-foreground', children: t('backgroundColor') }),
+              jsx('label', { className: 'text-ui-sm font-medium text-foreground', children: t('backgroundColor') }),
               jsxs('div', {
                 className: 'flex items-center gap-2',
                 children: [
@@ -4925,7 +5271,7 @@ function CustomThemeStudio({ store, onApplySkin }) {
                   jsx(Input, {
                     value: background,
                     onChange: e => setBackground(e.target.value),
-                    className: 'font-mono text-xs'
+                    className: 'font-mono text-ui-sm'
                   })
                 ]
               })
@@ -4934,7 +5280,7 @@ function CustomThemeStudio({ store, onApplySkin }) {
           jsxs('div', {
             className: 'flex flex-col gap-2',
             children: [
-              jsx('label', { className: 'text-xs font-medium text-foreground', children: t('foregroundColor') }),
+              jsx('label', { className: 'text-ui-sm font-medium text-foreground', children: t('foregroundColor') }),
               jsxs('div', {
                 className: 'flex items-center gap-2',
                 children: [
@@ -4947,7 +5293,7 @@ function CustomThemeStudio({ store, onApplySkin }) {
                   jsx(Input, {
                     value: foreground,
                     onChange: e => setForeground(e.target.value),
-                    className: 'font-mono text-xs'
+                    className: 'font-mono text-ui-sm'
                   })
                 ]
               })
@@ -4956,7 +5302,7 @@ function CustomThemeStudio({ store, onApplySkin }) {
           jsxs('div', {
             className: 'flex flex-col gap-2 md:col-span-2',
             children: [
-              jsx('label', { className: 'text-xs font-medium text-foreground', children: t('wallpaperSource') }),
+              jsx('label', { className: 'text-ui-sm font-medium text-foreground', children: t('wallpaperSource') }),
               jsx(Input, {
                 value: wallpaperUrl,
                 onChange: e => setWallpaperUrl(e.target.value),
@@ -4990,7 +5336,7 @@ function CustomThemeStudio({ store, onApplySkin }) {
                   event.target.value = ''
                 }
               }),
-              importError && jsx('span', { className: 'text-xs text-destructive', children: importError })
+              importError && jsx('span', { className: 'text-ui-sm text-destructive', children: importError })
             ]
           }),
           jsx(Button, {
@@ -5015,14 +5361,39 @@ function WallpaperEnginePanel({ store, controller, preview, prepareScene }) {
   const [libraries, setLibraries] = useState([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
+  const [applied, setApplied] = useState('')
+  const [appliedNote, setAppliedNote] = useState('')
+  const [pkgPickItem, setPkgPickItem] = useState(null)
   const [filter, setFilter] = useState('all')
   const [query, setQuery] = useState('')
   const [page, setPage] = useState(0)
   const [previews, setPreviews] = useState({})
   const [importingId, setImportingId] = useState(null)
   const scanRevision = useRef(0)
-  const bridge = typeof window !== 'undefined' ? window.hermesDesktop : null
+  const repairedPreviews = useRef(new Set())
+  const bridge = typeof window !== 'undefined' ? (window.zcodeDesktop || window.hermesDesktop) : null
   const rootsKey = config.weRoots.join('|')
+
+  // A cached item's previewPath can outlive the file it pointed at (workshop
+  // updates, moved folders): the scan only validated existence once, at
+  // discovery time. Re-derive the preview from the persisted directory index
+  // (readDir reads the localStorage/IDB cache — no File handles needed) and
+  // persist the corrected item so the card shows the workshop's own preview
+  // (preview.gif & friends) again.
+  const repairPreview = async item => {
+    const dir = item?.dir || (typeof item?.id === 'string' && /^[a-z]:[\\/]/i.test(item.id) ? item.id : null)
+    if (!bridge?.readDir || !dir || repairedPreviews.current.has(item.id)) return
+    repairedPreviews.current.add(item.id)
+    try {
+      const fresh = await readWallpaperProject(bridge, dir, item.source || 'workshop')
+      if (!fresh?.previewPath || fresh.previewPath === item.previewPath) return
+      setItems(current => {
+        const next = current.map(existing => existing.id === fresh.id ? { ...existing, ...fresh } : existing)
+        saveCachedWallpapers(next, [])
+        return next
+      })
+    } catch { /* The card keeps its placeholder; refresh rescans from scratch. */ }
+  }
 
   async function refresh() {
     const revision = ++scanRevision.current
@@ -5047,6 +5418,26 @@ function WallpaperEnginePanel({ store, controller, preview, prepareScene }) {
     return () => { scanRevision.current += 1 }
   }, [rootsKey])
 
+  // The backdrop reports media load failures (missing/corrupt file) so a
+  // failed "set as wallpaper" is visible instead of a silent no-op.
+  useEffect(() => {
+    if (typeof window === 'undefined') return undefined
+    const handleFailure = event => setError(event?.detail?.fallback
+      ? (event.detail.code === 'SCENE_PKG_UNAVAILABLE' ? t('weReauthorize') : t('weSceneFallback')) : t('weLoadFailed'))
+    if (controller.backdrop.lastMediaIssue) handleFailure({ detail: controller.backdrop.lastMediaIssue })
+    window.addEventListener('zcode-skins:wallpaper-error', handleFailure)
+    return () => window.removeEventListener('zcode-skins:wallpaper-error', handleFailure)
+  }, [t])
+
+  // The full directory index is restored from IndexedDB a moment after boot;
+  // rescan then so the gallery reflects everything without a manual re-pick.
+  useEffect(() => {
+    if (typeof window === 'undefined') return undefined
+    const handleHydrated = () => void refresh()
+    window.addEventListener('zcode-skins:index-hydrated', handleHydrated)
+    return () => window.removeEventListener('zcode-skins:index-hydrated', handleHydrated)
+  }, [])
+
   const filtered = items.filter(item => (filter === 'all' || item.kind === filter) &&
     (!query || item.title.toLocaleLowerCase().includes(query.toLocaleLowerCase())))
   const pages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE))
@@ -5059,13 +5450,16 @@ function WallpaperEnginePanel({ store, controller, preview, prepareScene }) {
     const fetchPreviews = async () => {
       for (let start = 0; start < visible.length && !cancelled; start += 4) {
         await Promise.all(visible.slice(start, start + 4).map(async item => {
+          if (!item.previewPath) { void repairPreview(item); return }
           if (previews[item.previewPath]) return
           try {
             const data = await bridge.readFileDataUrl(item.previewPath)
             if (!cancelled && typeof data === 'string' && data.startsWith('data:image/')) {
               setPreviews(current => ({ ...current, [item.previewPath]: data }))
+            } else if (!cancelled) {
+              void repairPreview(item)
             }
-          } catch { /* A missing thumbnail must not block the inventory. */ }
+          } catch { void repairPreview(item) /* A missing thumbnail must not block the inventory. */ }
         }))
       }
     }
@@ -5088,6 +5482,9 @@ function WallpaperEnginePanel({ store, controller, preview, prepareScene }) {
 
   async function useWallpaper(item) {
     setError('')
+    setApplied('')
+    setAppliedNote('')
+    setPkgPickItem(null)
     setImportingId(item.id)
     try {
       let source = wallpaperMediaUrl(item.mediaPath, item.mediaType)
@@ -5097,16 +5494,41 @@ function WallpaperEnginePanel({ store, controller, preview, prepareScene }) {
       if (item.kind === 'scene') {
         // Re-selecting the already-prepared scene must not depend on the
         // gateway: its unpacked manifest and preview frame are already on
-        // disk and referenced by the current config.
+        // disk and referenced by the current config. The prepared store lives
+        // in memory only, so right after a restart it may still be rehydrating
+        // (or gone) — probe it first; if it cannot serve, fall through to a
+        // full re-prepare instead of pretending success.
         if (config.wallpaperType === 'scene' &&
             config.weSelection?.id === item.id && config.wallpaperSource &&
             !config.wallpaperSource.startsWith('data:')) {
-          controller.changeConfig({ wallpaperEnabled: true })
+          const probe = await (bridge?.readFileText?.(config.wallpaperSource)?.catch(() => null)) ?? null
+          if (probe?.text) {
+            controller.changeConfig({ wallpaperEnabled: true })
+            setApplied(item.title)
+            return
+          }
+        }
+        if (!prepareScene) {
+          // ZCode has no unpack backend: apply the project's static preview
+          // frame instead of failing outright.
+          if (!item.previewPath) throw new Error(t('weSceneUnsupported'))
+          controller.changeConfig({
+            wallpaperEnabled: true,
+            wallpaperType: 'image',
+            wallpaperSource: item.previewPath,
+            weSelection: { id: item.id, title: item.title, kind: item.kind,
+              staticFallback: true, framePath: null, previewPath: item.previewPath }
+          })
+          setApplied(item.title)
+          setAppliedNote(t('weSceneFallbackNote'))
           return
         }
-        if (!prepareScene) throw new Error(t('weSceneBackendUnavailable'))
         const result = await prepareScene(item.dir)
-        if (!result?.ok) throw new Error(result?.error || t('weSceneBackendUnavailable'))
+        if (!result?.ok) {
+          const error = new Error(result?.error || t('weSceneBackendUnavailable'))
+          if (result?.code) error.code = result.code
+          throw error
+        }
         framePath = result.framePath || null
         if (result.manifest && result.manifestPath) {
           source = result.manifestPath
@@ -5129,13 +5551,35 @@ function WallpaperEnginePanel({ store, controller, preview, prepareScene }) {
         wallpaperType: type,
         wallpaperSource: source,
         weSelection: { id: item.id, title: item.title, kind: item.kind, staticFallback,
-          framePath, previewPath: item.previewPath }
+          framePath, previewPath: item.previewPath, dir: item.dir }
       })
+      setApplied(item.title)
     } catch (cause) {
       // A blocked backend surfaces as an ipc 404 "Plugin not found" — map it
       // to the recovery action instead of the raw electron error text.
       const message = String(cause?.message || cause)
-      setError(/Plugin not found|\b404\b/.test(message) ? t('weSceneBackendMissing') : message)
+      if (cause?.code === SCENE_PKG_UNAVAILABLE) {
+        // The project folder was never enumerated into the index; let the user
+        // pick that one (small) folder, then retry automatically.
+        setError('')
+        setPkgPickItem(item)
+      } else {
+        setError(/Plugin not found|\b404\b/.test(message) ? t('weSceneBackendMissing') : message)
+      }
+    } finally {
+      setImportingId(null)
+    }
+  }
+
+  async function pickSceneFolder(item) {
+    setError('')
+    setPkgPickItem(null)
+    setImportingId(item.id)
+    try {
+      const paths = bridge?.selectPaths ? await bridge.selectPaths({ directories: true }) : null
+      const picked = paths?.[0]
+      if (!picked) return
+      await useWallpaper(item)
     } finally {
       setImportingId(null)
     }
@@ -5145,8 +5589,8 @@ function WallpaperEnginePanel({ store, controller, preview, prepareScene }) {
   return jsxs('section', { 'data-hermes-skins-surface': '', className: 'rounded-xl border border-border bg-card p-5', children: [
     jsxs('div', { className: 'flex flex-wrap items-start justify-between gap-3', children: [
       jsxs('div', { className: 'space-y-1', children: [
-        jsx('h2', { className: 'font-semibold text-foreground', children: t('weTitle') }),
-        jsx('p', { className: 'text-xs text-muted-foreground', children: t('weDescription') })
+        jsx('h2', { className: 'text-xl font-semibold tracking-tight text-foreground', children: t('weTitle') }),
+        jsx('p', { className: 'text-ui-sm text-muted-foreground', children: t('weDescription') })
       ] }),
       jsxs('div', { className: 'flex gap-2', children: [
         jsx(Button, { size: 'sm', variant: 'outline', onClick: chooseFolder, children: t('weChooseFolder') }),
@@ -5154,30 +5598,46 @@ function WallpaperEnginePanel({ store, controller, preview, prepareScene }) {
           children: loading ? t('weScanning') : t('weRefresh') })
       ] })
     ] }),
-    jsx('p', { className: 'mt-3 text-xs text-muted-foreground', children: loading ? t('weScanning') : t('weFound', items.length) }),
-    error && jsx('p', { className: 'mt-2 text-xs text-destructive', children: error }),
+    jsx('p', { className: 'mt-3 text-ui-sm text-muted-foreground', children: loading ? t('weScanning') : t('weFound', items.length) }),
+    jsx('p', { className: 'mt-1 text-ui-sm text-muted-foreground', children: t('wePickHint') }),
+    error && jsx('p', { className: 'mt-2 text-ui-sm text-destructive', children: error }),
+    applied && !error && jsx('p', { className: 'mt-2 text-ui-sm font-medium text-primary', children:
+      appliedNote ? `${t('weAppliedHint', applied)} ${appliedNote}` : t('weAppliedHint', applied) }),
+    pkgPickItem && jsxs('div', { className: 'mt-2 flex flex-wrap items-center gap-2 rounded-lg border border-amber-500/50 bg-amber-500/10 p-2.5', children: [
+      jsx('span', { className: 'text-ui-sm text-foreground', children: t('weScenePickHint', pkgPickItem.title) }),
+      jsx(Button, { size: 'sm', variant: 'outline', disabled: Boolean(importingId),
+        onClick: () => void pickSceneFolder(pkgPickItem), children: t('weScenePickButton') })
+    ] }),
     !loading && config.weSelection && items.length > 0 && !items.some(item => item.id === config.weSelection.id) &&
-      jsx('p', { className: 'mt-2 text-xs text-amber-600', children: t('weMissing') }),
+      jsx('p', { className: 'mt-2 text-ui-sm text-amber-600', children: t('weMissing') }),
     jsxs('div', { className: 'mt-4 flex flex-wrap items-center gap-2', children: [
       jsx(Input, { value: query, onChange: event => { setQuery(event.target.value); setPage(0) },
         placeholder: t('weSearch'), className: 'max-w-64', 'aria-label': t('weSearch') }),
       ['all', 'video', 'scene', 'image', 'web'].map(value => jsx('button', {
         key: value, type: 'button', 'aria-pressed': filter === value,
         onClick: () => { setFilter(value); setPage(0) },
-        className: `rounded-full px-2.5 py-1 text-xs ${filter === value ? 'bg-primary text-primary-foreground' : 'bg-background text-foreground'}`,
+        className: `rounded-full px-2.5 py-1 text-ui-sm ${filter === value ? 'bg-primary text-primary-foreground' : 'bg-background text-foreground'}`,
         children: value === 'all' ? t('tagsAll') : kindLabel(value)
       }))
     ] }),
-    !loading && items.length === 0 && jsx('p', { className: 'mt-4 text-sm text-muted-foreground', children: t('weEmpty') }),
+    !loading && items.length === 0 && jsx('p', { className: 'mt-4 text-ui-base text-muted-foreground', children: t('weEmpty') }),
     jsxs('div', { className: 'mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3', children: visible.map(item => {
       const selected = config.weSelection?.id === item.id
+      // ZCode's bridge exposes absolute paths: previews load straight from
+      // disk (works from the persisted index, no File handles needed).
+      const directSrc = bridge?.isZcodeBridge ? normalizeMediaSource(item.previewPath, 'image') : null
+      const previewSrc = previews[item.previewPath] || directSrc
       return jsxs('article', { key: item.id, 'data-hermes-skins-surface': '', className: `overflow-hidden rounded-lg border bg-background ${selected ? 'border-primary' : 'border-border'}`, children: [
-        previews[item.previewPath]
-          ? jsx('img', { src: previews[item.previewPath], alt: '', loading: 'lazy', className: 'h-36 w-full object-cover' })
+        previewSrc
+          ? jsx('img', { src: previewSrc, alt: '', loading: 'lazy', className: 'h-36 w-full object-cover',
+              onError: event => {
+                if (directSrc) event.currentTarget.style.visibility = 'hidden'
+                void repairPreview(item)
+              } })
           : jsx('div', { className: 'h-36 bg-muted/40' }),
         jsxs('div', { className: 'space-y-2 p-3', children: [
-          jsx('h3', { className: 'line-clamp-2 min-h-8 text-sm font-medium text-foreground', title: item.title, children: item.title }),
-          jsx('p', { className: 'text-xs text-muted-foreground', children: item.kind === 'scene'
+          jsx('h3', { className: 'line-clamp-2 min-h-8 text-ui-base font-medium text-foreground', title: item.title, children: item.title }),
+          jsx('p', { className: 'text-ui-sm text-muted-foreground', children: item.kind === 'scene'
             ? `${kindLabel(item.kind)} · ${t('weSceneLive')}`
             : item.staticFallback ? `${kindLabel(item.kind)} · ${t('weStaticFallback')}` : kindLabel(item.kind) }),
           jsx(Button, { size: 'sm', className: 'w-full', disabled: Boolean(preview) || Boolean(importingId),
@@ -5186,7 +5646,7 @@ function WallpaperEnginePanel({ store, controller, preview, prepareScene }) {
         ] })
       ] })
     }) }),
-    pages > 1 && jsxs('div', { className: 'mt-4 flex items-center justify-end gap-2 text-xs text-muted-foreground', children: [
+    pages > 1 && jsxs('div', { className: 'mt-4 flex items-center justify-end gap-2 text-ui-sm text-muted-foreground', children: [
       jsx(Button, { size: 'sm', variant: 'outline', disabled: page === 0,
         onClick: () => setPage(page - 1), children: '←' }),
       jsx('span', { children: `${page + 1} / ${pages}` }),
@@ -5209,8 +5669,12 @@ function SkinCenterPage({ store, controller, prepareScene }) {
   const theme = useTheme()
   const config = useValue(store.$config)
   const preview = useValue(store.$tryOnSkin)
-  const [tab, setTabState] = useState(viewMemory.tab)
-  const setTab = id => { viewMemory.tab = id; setTabState(id) }
+  const [tab, setTabState] = useState(viewMemory.tab || 'gallery')
+  const setTab = id => {
+    if (!id) return
+    viewMemory.tab = id
+    setTabState(id)
+  }
   const [tag, setTag] = useState('all')
   const [sourceDraft, setSourceDraft] = useState(config?.wallpaperSource || '')
   const scrollRef = useRef(null)
@@ -5232,18 +5696,24 @@ function SkinCenterPage({ store, controller, prepareScene }) {
     // short window; the moment the user scrolls on their own, back off.
     if (el.scrollTop >= desired - 1) return undefined
     let cancelled = false
+    let frame = null
     let frames = 120
-    const cancel = () => { cancelled = true }
+    const cancel = () => {
+      cancelled = true
+      if (frame !== null) cancelAnimationFrame(frame)
+      el.removeEventListener('wheel', cancel)
+      el.removeEventListener('touchmove', cancel)
+    }
     el.addEventListener('wheel', cancel, { passive: true, once: true })
     el.addEventListener('touchmove', cancel, { passive: true, once: true })
     const tick = () => {
-      if (cancelled || !frames) return
+      if (cancelled || !frames) { cancel(); return }
       frames -= 1
-      if (el.scrollTop >= desired - 1) return
+      if (el.scrollTop >= desired - 1) { cancel(); return }
       el.scrollTop = desired
-      requestAnimationFrame(tick)
+      frame = requestAnimationFrame(tick)
     }
-    requestAnimationFrame(tick)
+    frame = requestAnimationFrame(tick)
     return cancel
   }, [tab])
 
@@ -5260,28 +5730,29 @@ function SkinCenterPage({ store, controller, prepareScene }) {
     return jsxs('label', {
       className: 'flex flex-col gap-1.5',
       children: [
-        jsxs('span', { className: 'flex justify-between text-xs text-foreground', children: [
+        jsxs('span', { className: 'flex justify-between text-ui-sm text-foreground', children: [
           jsx('span', { children: label }),
           jsx('span', { className: 'font-mono text-muted-foreground', children: `${config[key]}${unit}` })
         ] }),
         jsx('input', {
           type: 'range', min, max, step: 1, value: config[key],
+          'aria-label': label, 'data-zcode-skins-param': key,
           disabled: !(active || config.wallpaperSource) || Boolean(preview) || extraDisabled,
           onChange: event => controller.changeConfig({ [key]: Number(event.target.value) }),
           className: 'w-full accent-primary'
         }),
-        jsx('span', { className: 'text-[11px] text-muted-foreground', children: description })
+        jsx('span', { className: 'text-ui-sm text-muted-foreground', children: description })
       ]
     })
   }
 
   const gallery = jsxs('div', { className: 'flex flex-col gap-5', children: [
     jsxs('div', { className: 'flex flex-wrap items-center gap-2', children: [
-      jsx('span', { className: 'text-xs text-muted-foreground', children: t('filterByTag') }),
+      jsx('span', { className: 'text-ui-sm text-muted-foreground', children: t('filterByTag') }),
       ['all', 'art', 'anime', 'dark', 'light', 'cyber'].map(value => jsx('button', {
         key: value, type: 'button', onClick: () => setTag(value),
         'aria-pressed': tag === value,
-        className: `rounded-full px-3 py-1 text-xs ${tag === value ? 'bg-primary text-primary-foreground' : 'bg-background text-foreground hover:bg-accent/50'}`,
+        className: `rounded-full px-3 py-1 text-ui-sm ${tag === value ? 'bg-primary text-primary-foreground' : 'bg-background text-foreground hover:bg-accent/50'}`,
         children: t(`tags${value[0].toUpperCase()}${value.slice(1)}`)
       }))
     ] }),
@@ -5289,7 +5760,7 @@ function SkinCenterPage({ store, controller, prepareScene }) {
       jsxs('section', { 'data-hermes-skins-surface': '', className: 'flex flex-col justify-between gap-4 rounded-xl border border-border bg-card p-5', children: [
         jsxs('div', { className: 'space-y-2', children: [
           jsx('h2', { className: 'font-semibold text-foreground', children: t('resetToDefault') }),
-          jsx('p', { className: 'text-xs text-muted-foreground', children: t('officialDefaultDesc') })
+          jsx('p', { className: 'text-ui-sm text-muted-foreground', children: t('officialDefaultDesc') })
         ] }),
         jsx(Button, { variant: 'outline', onClick: () => controller.restore(theme),
           disabled: !active && !preview, children: t('resetToDefault') })
@@ -5311,7 +5782,7 @@ function SkinCenterPage({ store, controller, prepareScene }) {
                 isActive ? jsx(Badge, { children: t('activeBadge') }) :
                   isPreview ? jsx(Badge, { variant: 'secondary', children: t('tryOnBadge') }) : null
               ] }),
-              jsx('p', { className: 'flex-1 text-xs text-muted-foreground', children: skin.tagline || skin.description }),
+              jsx('p', { className: 'flex-1 text-ui-sm text-muted-foreground', children: skin.tagline || skin.description }),
               jsxs('div', { className: 'flex gap-2', children: [
                 jsx(Button, { size: 'sm', variant: 'secondary', className: 'flex-1',
                   onClick: () => controller.tryOn(skin, theme), children: t('tryOnButton') }),
@@ -5325,72 +5796,78 @@ function SkinCenterPage({ store, controller, prepareScene }) {
     ] })
   ] })
 
-  const wallpaper = jsxs('div', { className: 'flex flex-col gap-5', children: [
-    jsxs('section', { 'data-hermes-skins-surface': '', className: 'flex max-w-2xl flex-col gap-5 rounded-xl border border-border bg-card p-5', children: [
-    jsxs('div', { className: 'flex items-center justify-between gap-4', children: [
+  // Native settings-row pattern: label left, control right, divided rows.
+  const row = (label, control) => jsxs('div', { className: 'flex items-center justify-between gap-4 px-5 py-3.5', children: [
+    jsx('span', { className: 'text-ui-base font-medium text-foreground', children: label }),
+    jsx('div', { className: 'shrink-0', children: control })
+  ] })
+
+  const wallpaper = jsxs('div', { className: 'flex flex-col gap-6', children: [
+    jsxs('section', { 'data-hermes-skins-surface': '', className: 'flex flex-col rounded-xl border border-border bg-card', children: [
+    jsxs('div', { className: 'flex items-center justify-between gap-4 px-5 pb-4 pt-5', children: [
       jsxs('div', { className: 'space-y-1', children: [
-        jsx('h2', { className: 'font-semibold text-foreground', children: t('wallpaperControls') }),
-        jsx('p', { className: 'text-xs text-muted-foreground', children: active || config.wallpaperSource ? t('enableWallpaperDesc') : t('selectSkinFirst') })
+        jsx('h2', { className: 'text-xl font-semibold tracking-tight text-foreground', children: t('wallpaperControls') }),
+        jsx('p', { className: 'text-ui-sm text-muted-foreground', children: active || config.wallpaperSource ? t('enableWallpaperDesc') : t('selectSkinFirst') })
       ] }),
       jsx(Switch, { checked: Boolean((active || config.wallpaperSource) && (preview ? preview.wallpaper : config.wallpaperEnabled)), disabled: !(active || config.wallpaperSource) || Boolean(preview),
         'aria-label': t('enableWallpaper'), onCheckedChange: value => controller.changeConfig({ wallpaperEnabled: value }) })
     ] }),
-    jsxs('label', { className: 'flex flex-col gap-2 text-xs text-foreground', children: [
-      t('wallpaperType'),
-      jsx(SegmentedControl, { value: config.wallpaperType, disabled: Boolean(preview),
+    jsxs('div', { className: 'flex flex-col border-t border-border', children: [
+      row(t('wallpaperType'), jsx(SegmentedControl, { value: config.wallpaperType, disabled: Boolean(preview),
         onChange: value => controller.changeConfig({ wallpaperType: value }),
         options: [
           { id: 'image', label: t('wallpaperTypeImage') },
           { id: 'video', label: t('wallpaperTypeVideo') },
           ...(config.wallpaperType === 'scene' ? [{ id: 'scene', label: t('weTypeScene') }] : []),
           ...(config.wallpaperType === 'web' ? [{ id: 'web', label: t('weTypeWeb') }] : [])
-        ] })
-    ] }),
-    jsxs('label', { className: 'flex flex-col gap-2 text-xs text-foreground', children: [
-      t('wallpaperMode'),
-      jsx(SegmentedControl, { value: config.wallpaperMode, disabled: Boolean(preview),
+        ] })),
+      row(t('wallpaperMode'), jsx(SegmentedControl, { value: config.wallpaperMode, disabled: Boolean(preview),
         onChange: value => controller.changeConfig({ wallpaperMode: value }), options: [
           { id: 'live', label: t('wallpaperModeLive') },
           { id: 'frame', label: t('wallpaperModeFrame') }
-        ] })
-    ] }),
-    jsxs('label', { className: 'flex flex-col gap-2 text-xs text-foreground', children: [
-      t('wallpaperFit'),
-      jsx(SegmentedControl, { value: config.wallpaperFit, disabled: Boolean(preview),
+        ] })),
+      row(t('wallpaperFit'), jsx(SegmentedControl, { value: config.wallpaperFit, disabled: Boolean(preview),
         onChange: value => controller.changeConfig({ wallpaperFit: value }), options: [
           { id: 'cover', label: t('wallpaperFitCover') },
           { id: 'contain', label: t('wallpaperFitContain') },
           { id: 'fill', label: t('wallpaperFitFill') }
-        ] })
+        ] })),
+      jsxs('div', { className: 'flex items-center justify-between gap-4 px-5 py-3.5', children: [
+        jsx('span', { className: 'text-ui-base font-medium text-foreground', children: t('wallpaperSource') }),
+        jsx('div', { className: 'w-80 shrink-0 space-y-1', children: jsxs('label', { className: 'block', children: [
+          jsx(Input, { value: sourceDraft, disabled: Boolean(preview),
+            onChange: event => setSourceDraft(event.target.value), onBlur: commitSource,
+            onKeyDown: event => { if (event.key === 'Enter') commitSource() },
+            placeholder: t('wallpaperSourcePlaceholder'), 'aria-invalid': !customSourceValid }),
+          !customSourceValid ? jsx('span', { className: 'block text-ui-sm text-destructive', children: t('invalidWallpaperSource') })
+            : jsx('span', { className: 'block text-ui-sm text-muted-foreground', children: t('sourceCommitHint') })
+        ] }) })
+      ] })
     ] }),
-    jsxs('label', { className: 'flex flex-col gap-2 text-xs text-foreground', children: [
-      t('wallpaperSource'),
-      jsx(Input, { value: sourceDraft, disabled: Boolean(preview),
-        onChange: event => setSourceDraft(event.target.value), onBlur: commitSource,
-        onKeyDown: event => { if (event.key === 'Enter') commitSource() },
-        placeholder: t('wallpaperSourcePlaceholder'), 'aria-invalid': !customSourceValid }),
-      jsx('span', { className: 'text-[11px] text-muted-foreground', children: t('sourceCommitHint') }),
-      !customSourceValid && jsx('span', { className: 'text-destructive', children: t('invalidWallpaperSource') })
-    ] }),
+    jsxs('div', { className: 'flex flex-col gap-4 border-t border-border px-5 py-4', children: [
     slider('wallpaperBlur', t('wallpaperBlur'), t('wallpaperBlurDesc')),
     slider('maskOcclusion', t('maskOcclusion'), t('maskOcclusionDesc')),
     slider('wallpaperOpacity', t('wallpaperOpacity'), t('wallpaperOpacityDesc')),
     slider('panelGlass', t('panelGlass'), t('panelGlassDesc')),
+    slider('composerTransparency', t('composerTransparency'), t('composerTransparencyDesc')),
+    slider('capsuleTransparency', t('capsuleTransparency'), t('capsuleTransparencyDesc')),
+    slider('cardTransparency', t('cardTransparency'), t('cardTransparencyDesc')),
     slider('bubbleOpacity', t('bubbleOpacity'), t('bubbleOpacityDesc')),
     slider('composerFrost', t('composerFrost'), t('composerFrostDesc')),
     slider('surfaceFrost', t('surfaceFrost'), t('surfaceFrostDesc')),
-    jsxs('label', { className: 'flex items-center justify-between gap-3 text-xs text-foreground', children: [
-      t('pauseOnHidden'),
+    jsxs('div', { className: 'flex items-center justify-between gap-3', children: [
+      jsx('span', { className: 'text-ui-base font-medium text-foreground', children: t('pauseOnHidden') }),
       jsx(Switch, { checked: config.pauseOnHidden, disabled: Boolean(preview),
         'aria-label': t('pauseOnHidden'), onCheckedChange: value => controller.changeConfig({ pauseOnHidden: value }) })
     ] }),
-    config.wallpaperType === 'video' && jsxs('div', { className: 'flex flex-col gap-3', children: [
-      jsxs('label', { className: 'flex items-center justify-between gap-3 text-xs text-foreground', children: [
-        t('wallpaperSound'),
+    config.wallpaperType === 'video' && jsxs('div', { className: 'flex flex-col gap-4', children: [
+      jsxs('div', { className: 'flex items-center justify-between gap-3', children: [
+        jsx('span', { className: 'text-ui-base font-medium text-foreground', children: t('wallpaperSound') }),
         jsx(Switch, { checked: config.wallpaperSound, disabled: Boolean(preview),
           'aria-label': t('wallpaperSound'), onCheckedChange: value => controller.changeConfig({ wallpaperSound: value }) })
       ] }),
       slider('wallpaperVolume', t('wallpaperVolume'), t('wallpaperVolumeDesc'), !config.wallpaperSound)
+    ] })
     ] })
     ] }),
     jsx(WallpaperEnginePanel, { store, controller, preview, prepareScene })
@@ -5402,10 +5879,10 @@ function SkinCenterPage({ store, controller, prepareScene }) {
     className: 'h-full w-full overflow-y-auto p-5 md:p-8',
     onScroll: event => { viewMemory[tab] = event.currentTarget.scrollTop },
     children: [
-    jsxs('header', { className: 'mb-5 flex flex-wrap items-center justify-between gap-4 border-b border-border pb-4', children: [
-      jsxs('div', { children: [
-        jsx('h1', { className: 'text-2xl font-bold text-foreground', children: t('pluginName') }),
-        jsx('p', { className: 'text-xs text-muted-foreground', children: t('pluginDesc') })
+    jsxs('header', { className: 'mb-5 flex flex-wrap items-center justify-between gap-4', children: [
+      jsxs('div', { className: 'space-y-1', children: [
+        jsx('h1', { className: 'text-3xl font-semibold tracking-tight text-foreground', children: t('pluginName') }),
+        jsx('p', { className: 'text-ui-base text-muted-foreground', children: t('pluginDesc') })
       ] }),
       jsx(SegmentedControl, { value: tab, onChange: setTab, options: [
         { id: 'gallery', label: t('tabGallery') },
@@ -5420,17 +5897,822 @@ function SkinCenterPage({ store, controller, prepareScene }) {
   ] })
 }
 
-// ─── Submodule: ZCode Modal & Floating Host ──────────────────
+// ─── Stylesheet (shadow-root CSS, inlined) ────────────────────
+const SKINS_CSS = "/* ============================================================================\n * zcode-skins — self-contained stylesheet\n * ----------------------------------------------------------------------------\n * ZCode's Tailwind build omits many utilities this UI relies on\n * (bg-neutral-900/90, rounded-2xl, shadow-2xl, z-[99990], max-w-5xl, ...),\n * so relying on the host stylesheet leaves the panel fully transparent and the\n * wallpaper bleeding through its text. Everything the plugin needs is therefore\n * defined here, scoped to the shadow root, and themed from ZCode's own tokens\n * when they exist (with self-sufficient fallbacks when they do not).\n * ========================================================================== */\n\n/* Dual-scoped tokens: `:host` serves the shadow-root modal, the attribute\n   selector serves the light-DOM settings panel (same class names resolve from\n   ZCode's own Tailwind build there; this sheet fills the gaps). */\n:host,\n[data-zcode-skins-panel] {\n  /* Surface tokens — prefer ZCode's own theme variables so the panel looks\n     native in both light and dark, fall back to a neutral palette. */\n  --zc-card: var(--color-card, #ffffff);\n  --zc-background: var(--color-background, #ffffff);\n  --zc-border: var(--color-border, rgba(0, 0, 0, 0.12));\n  --zc-foreground: var(--color-foreground, #0a0a0a);\n  --zc-muted: var(--color-muted-foreground, rgba(10, 10, 10, 0.6));\n  --zc-primary: var(--color-primary, var(--color-brand, #18181b));\n  --zc-primary-fg: var(--color-primary-foreground, #ffffff);\n  --zc-accent: var(--color-accent, rgba(0, 0, 0, 0.06));\n  --zc-secondary: var(--color-secondary, rgba(0, 0, 0, 0.06));\n  --zc-secondary-fg: var(--color-secondary-foreground, #0a0a0a);\n  --zc-destructive: var(--color-destructive, #dc2626);\n  --zc-radius: 10px;\n\n  /* Overlay palette — the modal chrome stays dark on purpose so the gallery\n     reads consistently over any wallpaper. */\n  --zc-overlay: 24, 24, 27;\n  --zc-overlay-deep: 9, 9, 11;\n  --zc-on-overlay: #f4f4f5;\n  --zc-on-overlay-muted: #a1a1aa;\n  --zc-on-overlay-faint: #71717a;\n  --zc-overlay-line: rgba(255, 255, 255, 0.10);\n  --zc-overlay-line-strong: rgba(255, 255, 255, 0.15);\n  --zc-overlay-hover: rgba(255, 255, 255, 0.10);\n}\n\n/* Shadow-context reset (modal): full isolation from the host app. */\n:host {\n  all: initial;\n  font-family: ui-sans-serif, system-ui, -apple-system, \"Segoe UI\", \"Microsoft YaHei UI\", sans-serif;\n  font-size: 14px;\n  line-height: 1.5;\n  color: var(--zc-foreground);\n  -webkit-font-smoothing: antialiased;\n}\n\n/* Light-context base (inline settings panel): inherit the app's font, base\n   size, and background — take only text color from the plugin tokens so the\n   panel reads as a native settings section. */\n[data-zcode-skins-panel] {\n  color: var(--zc-foreground);\n  -webkit-font-smoothing: antialiased;\n}\n\n:host([data-zc-theme=\"light\"]),\n[data-zcode-skins-panel][data-zc-theme=\"light\"] {\n  --zc-overlay: 255, 255, 255;\n  --zc-overlay-deep: 250, 250, 250;\n  --zc-on-overlay: #18181b;\n  --zc-on-overlay-muted: #52525b;\n  --zc-on-overlay-faint: #71717a;\n  --zc-overlay-line: rgba(0, 0, 0, 0.10);\n  --zc-overlay-line-strong: rgba(0, 0, 0, 0.16);\n  --zc-overlay-hover: rgba(0, 0, 0, 0.06);\n}\n\n*, *::before, *::after { box-sizing: border-box; }\n\n/* ── Layout ──────────────────────────────────────────────────────────── */\n.fixed { position: fixed; }\n.relative { position: relative; }\n.absolute { position: absolute; }\n.inset-0 { top: 0; right: 0; bottom: 0; left: 0; }\n.top-0 { top: 0; }\n.left-0 { left: 0; }\n.right-0 { right: 0; }\n.bottom-6 { bottom: 24px; }\n.right-6 { right: 24px; }\n\n.flex { display: flex; }\n.inline-flex { display: inline-flex; }\n.grid { display: grid; }\n.hidden { display: none; }\n.inline-block { display: inline-block; }\n.block { display: block; }\n\n.flex-col { flex-direction: column; }\n.flex-wrap { flex-wrap: wrap; }\n.flex-1 { flex: 1 1 0%; }\n.shrink-0 { flex-shrink: 0; }\n.items-center { align-items: center; }\n.items-start { align-items: flex-start; }\n.justify-center { justify-content: center; }\n.justify-between { justify-content: space-between; }\n.justify-end { justify-content: flex-end; }\n\n.grid-cols-1 { grid-template-columns: repeat(1, minmax(0, 1fr)); }\n.gap-1 { gap: 4px; }\n.gap-1\\.5 { gap: 6px; }\n.gap-2 { gap: 8px; }\n.gap-3 { gap: 12px; }\n.gap-4 { gap: 16px; }\n.gap-5 { gap: 20px; }\n.gap-6 { gap: 24px; }\n.space-y-1 > * + * { margin-top: 4px; }\n.space-y-2 > * + * { margin-top: 8px; }\n\n/* ── Sizing ──────────────────────────────────────────────────────────── */\n.w-full { width: 100%; }\n.w-4 { width: 16px; }\n.w-5 { width: 20px; }\n.w-8 { width: 32px; }\n.w-9 { width: 36px; }\n.w-10 { width: 40px; }\n.h-full { height: 100%; }\n.h-4 { height: 16px; }\n.h-5 { height: 20px; }\n.h-8 { height: 32px; }\n.h-9 { height: 36px; }\n.h-32 { height: 128px; }\n.h-36 { height: 144px; }\n.min-h-8 { min-height: 32px; }\n.max-w-2xl { max-width: 672px; }\n.max-w-5xl { max-width: 1024px; }\n.max-w-64 { max-width: 256px; }\n.h-\\[85vh\\] { height: 85vh; }\n\n/* ── Spacing ─────────────────────────────────────────────────────────── */\n.p-1 { padding: 4px; }\n.p-1\\.5 { padding: 6px; }\n.p-3 { padding: 12px; }\n.p-4 { padding: 16px; }\n.p-5 { padding: 20px; }\n.p-6 { padding: 24px; }\n.px-2 { padding-left: 8px; padding-right: 8px; }\n.px-2\\.5 { padding-left: 10px; padding-right: 10px; }\n.px-3 { padding-left: 12px; padding-right: 12px; }\n.px-6 { padding-left: 24px; padding-right: 24px; }\n.py-0\\.5 { padding-top: 2px; padding-bottom: 2px; }\n.py-1 { padding-top: 4px; padding-bottom: 4px; }\n.py-2 { padding-top: 8px; padding-bottom: 8px; }\n.py-4 { padding-top: 16px; padding-bottom: 16px; }\n.pb-4 { padding-bottom: 16px; }\n.mb-4 { margin-bottom: 16px; }\n.mb-5 { margin-bottom: 20px; }\n.mt-2 { margin-top: 8px; }\n.mt-3 { margin-top: 12px; }\n.mt-4 { margin-top: 16px; }\n\n/* ── Overflow / scroll ───────────────────────────────────────────────── */\n.overflow-hidden { overflow: hidden; }\n.overflow-y-auto { overflow-y: auto; -webkit-overflow-scrolling: touch; }\n.object-cover { object-fit: cover; }\n.line-clamp-2 {\n  display: -webkit-box;\n  -webkit-line-clamp: 2;\n  -webkit-box-orient: vertical;\n  overflow: hidden;\n}\n\n/* ── Borders & radius ────────────────────────────────────────────────── */\n.border { border-width: 1px; border-style: solid; }\n.border-2 { border-width: 2px; border-style: solid; }\n.border-b { border-bottom-width: 1px; border-bottom-style: solid; }\n.border-transparent { border-color: transparent; }\n.border-border { border-color: var(--zc-border); }\n.border-border\\/40 { border-color: color-mix(in srgb, var(--zc-border) 40%, transparent); }\n.border-border\\/60 { border-color: color-mix(in srgb, var(--zc-border) 60%, transparent); }\n.border-primary\\/20 { border-color: color-mix(in srgb, var(--zc-primary) 20%, transparent); }\n.border-primary\\/30 { border-color: color-mix(in srgb, var(--zc-primary) 30%, transparent); }\n.border-amber-500\\/40 { border-color: rgba(245, 158, 11, 0.4); }\n.border-white\\/10 { border-color: var(--zc-overlay-line); }\n.border-white\\/15 { border-color: var(--zc-overlay-line-strong); }\n\n.rounded { border-radius: 6px; }\n.rounded-md { border-radius: 8px; }\n.rounded-lg { border-radius: var(--zc-radius); }\n.rounded-xl { border-radius: 14px; }\n.rounded-2xl { border-radius: 18px; }\n.rounded-full { border-radius: 9999px; }\n\n/* ── Shadows ─────────────────────────────────────────────────────────── */\n.shadow-sm { box-shadow: 0 1px 2px rgba(0, 0, 0, 0.06); }\n.shadow-lg { box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.18), 0 4px 6px -4px rgba(0, 0, 0, 0.18); }\n.shadow-xl { box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.22), 0 8px 10px -6px rgba(0, 0, 0, 0.22); }\n.shadow-2xl { box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.45); }\n\n/* ── Typography ──────────────────────────────────────────────────────── */\n.text-\\[11px\\] { font-size: 11px; line-height: 1.45; }\n.text-xs { font-size: 12px; line-height: 1.5; }\n.text-sm { font-size: 13px; line-height: 1.5; }\n.text-base { font-size: 14px; line-height: 1.5; }\n.text-lg { font-size: 16px; line-height: 1.5; }\n.text-2xl { font-size: 22px; line-height: 1.35; }\n.font-medium { font-weight: 500; }\n.font-semibold { font-weight: 600; }\n.font-bold { font-weight: 700; }\n.font-mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }\n.leading-tight { line-height: 1.25; }\n.whitespace-nowrap { white-space: nowrap; }\n.select-none { user-select: none; }\n\n.text-foreground { color: var(--zc-foreground); }\n.text-muted-foreground { color: var(--zc-muted); }\n.text-primary { color: var(--zc-primary); }\n.text-destructive { color: var(--zc-destructive); }\n.text-amber-500 { color: #f59e0b; }\n.text-amber-600 { color: #d97706; }\n.text-white { color: #ffffff; }\n.text-neutral-100 { color: var(--zc-on-overlay); }\n.text-neutral-400 { color: var(--zc-on-overlay-muted); }\n.text-neutral-500 { color: var(--zc-on-overlay-faint); }\n\n/* ── Backgrounds ─────────────────────────────────────────────────────── */\n.bg-transparent { background-color: transparent; }\n.bg-white { background-color: #ffffff; }\n.bg-background { background-color: var(--zc-background); }\n.bg-background\\/80 { background-color: color-mix(in srgb, var(--zc-background) 80%, transparent); }\n.bg-card { background-color: var(--zc-card); }\n.bg-card\\/60 { background-color: color-mix(in srgb, var(--zc-card) 60%, transparent); }\n.bg-primary { background-color: var(--zc-primary); }\n.bg-primary\\/15 { background-color: color-mix(in srgb, var(--zc-primary) 15%, transparent); }\n.bg-primary\\/20 { background-color: color-mix(in srgb, var(--zc-primary) 20%, transparent); }\n.bg-secondary { background-color: var(--zc-secondary); }\n.bg-muted\\/40 { background-color: color-mix(in srgb, var(--zc-secondary) 40%, transparent); }\n.bg-muted\\/50 { background-color: color-mix(in srgb, var(--zc-secondary) 50%, transparent); }\n.bg-accent\\/50 { background-color: color-mix(in srgb, var(--zc-accent) 50%, transparent); }\n.bg-amber-500\\/10 { background-color: rgba(245, 158, 11, 0.10); }\n.bg-amber-500\\/20 { background-color: rgba(245, 158, 11, 0.20); }\n.bg-white\\/10 { background-color: var(--zc-overlay-hover); }\n.bg-black\\/50 { background-color: rgba(0, 0, 0, 0.5); }\n\n/* Overlay surfaces — the modal chrome stays dark (or light, per theme) and\n   is fully opaque so wallpaper art can never bleed into its text. */\n.bg-neutral-900\\/80 { background-color: rgba(var(--zc-overlay), 0.94); }\n.bg-neutral-900\\/90 { background-color: rgba(var(--zc-overlay), 0.98); }\n.bg-neutral-950\\/40 { background-color: rgba(var(--zc-overlay-deep), 0.6); }\n.hover\\:bg-neutral-800:hover { background-color: color-mix(in srgb, rgb(var(--zc-overlay)) 92%, var(--zc-on-overlay)); }\n.hover\\:bg-white\\/10:hover { background-color: var(--zc-overlay-hover); }\n.hover\\:text-white:hover { color: var(--zc-on-overlay); }\n\n.text-primary-foreground { color: var(--zc-primary-fg); }\n.text-secondary-foreground { color: var(--zc-secondary-fg); }\n\n/* ── Effects ─────────────────────────────────────────────────────────── */\n.backdrop-blur-md { backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); }\n.backdrop-blur-lg { backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px); }\n.backdrop-blur-xl { backdrop-filter: blur(24px); -webkit-backdrop-filter: blur(24px); }\n\n.transition { transition: color 150ms, background-color 150ms, border-color 150ms, opacity 150ms; }\n.transition-all { transition: all 150ms cubic-bezier(0.4, 0, 0.2, 1); }\n.transition-colors { transition: color 150ms, background-color 150ms, border-color 150ms; }\n.transition-opacity { transition: opacity 200ms ease; }\n.duration-150 { transition-duration: 150ms; }\n.duration-200 { transition-duration: 200ms; }\n.ease-in-out { transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1); }\n\n.hover\\:scale-105:hover { transform: scale(1.05); }\n.active\\:scale-95:active { transform: scale(0.95); }\n\n.pointer-events-none { pointer-events: none; }\n.cursor-pointer { cursor: pointer; }\n.disabled\\:cursor-not-allowed:disabled { cursor: not-allowed; }\n.disabled\\:opacity-50:disabled { opacity: 0.5; }\n.ring-0 { box-shadow: none; }\n.ring-offset-background { --tw-ring-offset-color: var(--zc-background); }\n.focus-visible\\:outline-none:focus-visible { outline: none; }\n.focus-visible\\:ring-1:focus-visible { box-shadow: 0 0 0 1px var(--zc-primary); }\n.focus-visible\\:ring-2:focus-visible { box-shadow: 0 0 0 2px var(--zc-primary); }\n.focus-visible\\:ring-primary:focus-visible { --tw-ring-color: var(--zc-primary); }\n.placeholder\\:text-muted-foreground::placeholder { color: var(--zc-muted); }\n.file\\:border-0::file-selector-button { border: 0; }\n.file\\:bg-transparent::file-selector-button { background: transparent; }\n.file\\:text-sm::file-selector-button { font-size: 13px; }\n.file\\:font-medium::file-selector-button { font-weight: 500; }\n.accent-primary { accent-color: var(--zc-primary); }\n\n/* ── Z-index ladder ──────────────────────────────────────────────────── */\n.z-\\[99980\\] { z-index: 99980; }\n.z-\\[99990\\] { z-index: 99990; }\n.z-\\[99999\\] { z-index: 99999; }\n\n/* Utilities the inline settings panel needs that this sheet otherwise lacks\n   (ZCode's own build provides them in the light DOM; the modal needs them\n   defined here). */\n.text-3xl { font-size: 30px; line-height: 36px; }\n.tracking-tight { letter-spacing: -0.025em; }\n.min-h-0 { min-height: 0; }\n.max-w-4xl { max-width: 896px; }\n/* ZCode's fluid type scale (rem-based, follows its 界面字号 setting). The\n   light-DOM panel gets the real ones from the app stylesheet; these fixed\n   fallbacks only matter inside the shadow-root modal. */\n.text-ui-sm { font-size: 13px; line-height: 20px; }\n.text-ui-base { font-size: 14px; line-height: 21px; }\n.text-ui-lg { font-size: 16px; line-height: 24px; }\n.text-xl { font-size: 20px; line-height: 28px; }\n\n/* ── Responsive ──────────────────────────────────────────────────────── */\n@media (min-width: 640px) {\n  .sm\\:grid-cols-2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }\n  .sm\\:inline-block { display: inline-block; }\n}\n@media (min-width: 768px) {\n  .md\\:grid-cols-2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }\n  .md\\:col-span-2 { grid-column: span 2 / span 2; }\n  .md\\:p-8 { padding: 32px; }\n}\n@media (min-width: 1280px) {\n  .xl\\:grid-cols-3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }\n}\n\n/* ── Structural rules ────────────────────────────────────────────────── */\n.zcode-skin-center-backdrop {\n  position: fixed;\n  inset: 0;\n  z-index: 99990;\n  display: flex;\n  align-items: center;\n  justify-content: center;\n  padding: 16px;\n  background-color: rgba(0, 0, 0, 0.5);\n  backdrop-filter: blur(12px);\n  -webkit-backdrop-filter: blur(12px);\n  opacity: 1;\n}\n\n.zcode-skin-center-dialog {\n  position: relative;\n  display: flex;\n  flex-direction: column;\n  width: 100%;\n  max-width: 1024px;\n  height: 85vh;\n  overflow: hidden;\n  border: 1px solid var(--zc-overlay-line);\n  border-radius: 18px;\n  /* Fully opaque: the whole point is that wallpaper art must never show\n     through the panel's text. */\n  background-color: rgb(var(--zc-overlay));\n  color: var(--zc-on-overlay);\n  box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.55);\n}\n\n.zcode-skin-tryon-fixed-container {\n  position: fixed;\n  top: 0;\n  left: 0;\n  right: 0;\n  z-index: 99999;\n}\n\n/* Cards and rows inside the panel: force an opaque surface so nothing from\n   the wallpaper can ever interfere with label legibility. */\n.zcode-skin-center-dialog section[data-zc-surface] {\n  background-color: rgb(var(--zc-overlay));\n  border-color: var(--zc-overlay-line);\n}\n\n/* Skin Center surfaces inherit the user's card material through its shadow root. */\n[data-hermes-skins-surface] {\n  background-color: var(--zcode-skins-card-tint, var(--zc-card)) !important;\n  backdrop-filter: var(--zcode-skins-frost, none);\n  -webkit-backdrop-filter: var(--zcode-skins-frost, none);\n}\n[data-hermes-skins-surface] [data-hermes-skins-surface] {\n  background-color: transparent !important;\n  backdrop-filter: none;\n  -webkit-backdrop-filter: none;\n}\n"
+
+// ─── Submodule: ZCode Local File Bridge ───────────────────────
 
 /**
- * ZCode Modal & Trigger Host
- * Mounts the Skin Center modal and floating trigger button into ZCode Desktop DOM.
+ * ZCode Desktop Local File Bridge
+ * Exposes `window.zcodeDesktop` with the readDir/readFileText/readFileDataUrl/
+ * selectPaths contract that we-library.js, scene-player.js, web-player.js and
+ * WallpaperEnginePanel.js expect from the Hermes host.
+ *
+ * ZCode's renderer runs with contextIsolation (no Node access), but the host
+ * exposes `window.zcode` with native file pickers and `webUtils.getPathForFile`.
+ * There is no generic "list directory" IPC, so directory enumeration goes
+ * through a hidden `<input webkitdirectory>`: the native folder dialog yields
+ * a File object for every file below the picked folder, and getPathForFile
+ * turns each into its absolute Windows path. That snapshot powers readDir and
+ * the read* calls; picked roots accumulate, and the caller persists them
+ * (config.weRoots) so wallpapers keep working across restarts.
+ */
+
+const DRIVE_ROOT = /^[A-Za-z]:$/
+const INDEX_CACHE_KEY = 'zcode-skins:file-index'
+const INDEX_CACHE_LIMIT = 4 * 1024 * 1024
+const TEXT_CACHE_LIMIT = 4096
+const CACHE_DB = 'zcode-skins-cache'
+const CACHE_STORE = 'kv'
+
+function openCacheDb() {
+  return new Promise((resolve, reject) => {
+    const request = indexedDB.open(CACHE_DB, 1)
+    request.onupgradeneeded = () => {
+      if (!request.result.objectStoreNames.contains(CACHE_STORE)) {
+        request.result.createObjectStore(CACHE_STORE)
+      }
+    }
+    request.onsuccess = () => resolve(request.result)
+    request.onerror = () => reject(request.error)
+  })
+}
+
+async function idbPut(key, value) {
+  try {
+    const db = await openCacheDb()
+    await new Promise((resolve, reject) => {
+      const tx = db.transaction(CACHE_STORE, 'readwrite')
+      tx.objectStore(CACHE_STORE).put(value, key)
+      tx.oncomplete = resolve
+      tx.onerror = () => reject(tx.error)
+    })
+    return true
+  } catch {
+    return false
+  }
+}
+
+async function idbGet(key) {
+  try {
+    const db = await openCacheDb()
+    return await new Promise(resolve => {
+      const tx = db.transaction(CACHE_STORE, 'readonly')
+      const request = tx.objectStore(CACHE_STORE).get(key)
+      request.onsuccess = () => resolve(request.result ?? null)
+      request.onerror = () => resolve(null)
+    })
+  } catch {
+    return null
+  }
+}
+
+async function idbDelete(key) {
+  try {
+    const db = await openCacheDb()
+    await new Promise((resolve, reject) => {
+      const tx = db.transaction(CACHE_STORE, 'readwrite')
+      tx.objectStore(CACHE_STORE).delete(key)
+      tx.oncomplete = resolve
+      tx.onerror = () => reject(tx.error)
+    })
+    return true
+  } catch {
+    return false
+  }
+}
+
+// Back-compat: the older dedicated pkg database.
+function openPkgDb() {
+  return new Promise((resolve, reject) => {
+    const request = indexedDB.open('zcode-skins-scene-pkg', 1)
+    request.onupgradeneeded = () => {
+      if (!request.result.objectStoreNames.contains('pkgs')) {
+        request.result.createObjectStore('pkgs')
+      }
+    }
+    request.onsuccess = () => resolve(request.result)
+    request.onerror = () => reject(request.error)
+  })
+}
+
+/** Directory listings and small text files (project.json, libraryfolders.vdf)
+ * persist to localStorage so library scans keep working after a restart
+ * without re-picking the folder. File handles themselves stay session-only. */
+function loadIndexCache() {
+  try {
+    const parsed = JSON.parse(localStorage.getItem(INDEX_CACHE_KEY) || 'null')
+    if (!parsed || typeof parsed !== 'object') return null
+    return parsed
+  } catch {
+    return null
+  }
+}
+
+/** Pure index builder — exported for tests. entries need { absPath, file };
+ * absolute paths may use \\ or / separators. */
+function buildFileIndex(entries) {
+  const dirs = new Map()   // lowercase dir path -> [{ name, path, isDirectory }]
+  const files = new Map()  // lowercase file path -> File
+  const roots = new Set()
+
+  const parentOf = path => {
+    const trimmed = path.replace(/[\\/]+$/, '')
+    const cut = Math.max(trimmed.lastIndexOf('\\'), trimmed.lastIndexOf('/'))
+    if (cut < 0) return null
+    const parent = trimmed.slice(0, cut)
+    return DRIVE_ROOT.test(parent) ? parent + '\\' : parent
+  }
+
+  const ensureDir = path => {
+    const key = path.toLowerCase()
+    if (dirs.has(key)) return
+    dirs.set(key, [])
+    const parent = parentOf(path)
+    if (!parent) return
+    ensureDir(parent)
+    dirs.get(parent.toLowerCase()).push({
+      name: path.replace(/[\\/]+$/, '').split(/[\\/]/).pop(),
+      path,
+      isDirectory: true
+    })
+  }
+
+  for (const { absPath, file } of entries) {
+    if (typeof absPath !== 'string' || !absPath.trim()) continue
+    // Normalize to Windows backslash form so keys match joinLocalPath output
+    // regardless of which separator webUtils returned.
+    const clean = absPath.trim().replace(/\//g, '\\')
+    files.set(clean.toLowerCase(), file)
+    const parent = parentOf(clean)
+    if (!parent) continue
+    ensureDir(parent)
+    dirs.get(parent.toLowerCase()).push({
+      name: clean.split(/[\\/]/).pop(),
+      path: clean,
+      isDirectory: false
+    })
+    // The picked folder itself is the top-most ancestor below the drive root.
+    let top = parent
+    while (true) {
+      const upper = parentOf(top)
+      if (!upper || DRIVE_ROOT.test(upper.replace(/[\\/]+$/, ''))) break
+      top = upper
+    }
+    roots.add(top)
+  }
+
+  return { dirs, files, roots: [...roots] }
+}
+
+function guessMime(name) {
+  if (/\.jpe?g$/i.test(name)) return 'image/jpeg'
+  if (/\.png$/i.test(name)) return 'image/png'
+  if (/\.webp$/i.test(name)) return 'image/webp'
+  if (/\.gif$/i.test(name)) return 'image/gif'
+  if (/\.svg$/i.test(name)) return 'image/svg+xml'
+  if (/\.webm$/i.test(name)) return 'video/webm'
+  if (/\.mp4$/i.test(name)) return 'video/mp4'
+  if (/\.json$/i.test(name)) return 'application/json'
+  return 'application/octet-stream'
+}
+
+async function toDataUrl(file) {
+  const buffer = await file.arrayBuffer()
+  let binary = ''
+  const bytes = new Uint8Array(buffer)
+  const chunk = 0x8000
+  for (let start = 0; start < bytes.length; start += chunk) {
+    binary += String.fromCharCode.apply(null, bytes.subarray(start, start + chunk))
+  }
+  return `data:${guessMime(file.name)};base64,${btoa(binary)}`
+}
+
+/** Attaches the bridge onto `target` (normally `window`). `pickFiles` must
+ * resolve to { absPath, file }[] for whatever the user picked in the native
+ * dialog; injectable so tests can drive the API without a DOM. */
+function attachZcodeFileBridge(target, { zcode, pickFiles }) {
+  if (!target || !zcode) return false
+
+  const resolvePath = file => {
+    try {
+      const viaWebUtils = zcode.getPathForFile?.(file)
+      if (typeof viaWebUtils === 'string' && viaWebUtils.trim()) return viaWebUtils.trim()
+    } catch { /* webUtils unavailable — fall through to the legacy property. */ }
+    return typeof file.path === 'string' && file.path.trim() ? file.path.trim() : null
+  }
+
+  const dirs = new Map()
+  const files = new Map()
+  const sceneStores = new Map()
+  const cache = loadIndexCache() || { dirs: {}, texts: {}, roots: [] }
+  const cacheTexts = new Map(Object.entries(cache.texts || {}))
+  // Older indexed snapshots contain doubled Windows separators. Equivalent
+  // host paths must find those entries without rewriting persisted scene IDs.
+  const lookup = (map, value) => {
+    const raw = String(value).toLowerCase()
+    const normalized = raw.replace(/[\\/]+/g, '\\')
+    for (const key of [raw, normalized, normalized.replace(/\\/g, '\\\\'), normalized.replace(/\\/g, '/')]) {
+      if (map.has(key)) return map.get(key)
+    }
+  }
+  let cacheRoots = Array.isArray(cache.roots) ? cache.roots : []
+  let persistTimer = 0
+
+  const persistNow = () => {
+    try {
+      const payload = JSON.stringify({
+        dirs: Object.fromEntries(dirs),
+        texts: Object.fromEntries(cacheTexts),
+        roots: cacheRoots
+      })
+      try {
+        localStorage.setItem(INDEX_CACHE_KEY, payload)
+      } catch {
+        // Quota exceeded — drop the (large) listings, keep the small texts.
+        localStorage.setItem(INDEX_CACHE_KEY, JSON.stringify({ dirs: {}, texts: Object.fromEntries(cacheTexts), roots: cacheRoots }))
+      }
+    } catch { /* Persistence is best-effort. */ }
+    // The full index (dirs included) goes to IndexedDB without a quota cap.
+    void idbPut('file-index', {
+      at: Date.now(),
+      dirs: [...dirs.entries()],
+      texts: [...cacheTexts.entries()],
+      roots: cacheRoots
+    }, 'index')
+  }
+  const persist = () => {
+    if (persistTimer) return
+    persistTimer = setTimeout(() => {
+      persistTimer = 0
+      persistNow()
+    }, 500)
+  }
+
+  for (const [key, listing] of Object.entries(cache.dirs || {})) {
+    if (Array.isArray(listing)) dirs.set(key, listing)
+  }
+
+  const pruneUnder = roots => {
+    const prefixes = roots.map(root => root.toLowerCase().replace(/[\\/]+$/, '') + '\\')
+    const drop = path => prefixes.some(prefix => path.toLowerCase().startsWith(prefix))
+    for (const key of [...dirs.keys()]) if (drop(key)) dirs.delete(key)
+    for (const key of [...cacheTexts.keys()]) if (drop(key)) cacheTexts.delete(key)
+  }
+
+  const indexEntries = entries => {
+    const index = buildFileIndex(entries)
+    // Picks accumulate: users add one Steam library at a time. Listings under
+    // a freshly picked root are replaced wholesale so deletions propagate.
+    if (index.roots.length) pruneUnder(index.roots)
+    for (const [key, listing] of index.dirs) {
+      const existing = dirs.get(key)
+      if (existing) {
+        const seen = new Set(existing.map(entry => `${entry.path.toLowerCase()}|${entry.isDirectory}`))
+        for (const entry of listing) {
+          const mark = `${entry.path.toLowerCase()}|${entry.isDirectory}`
+          if (!seen.has(mark)) {
+            existing.push(entry)
+            seen.add(mark)
+          }
+        }
+      } else dirs.set(key, listing)
+    }
+    for (const [key, file] of index.files) files.set(key, file)
+    for (const root of index.roots) {
+      if (!cacheRoots.some(existing => existing.toLowerCase() === root.toLowerCase())) cacheRoots.push(root)
+    }
+    if (cacheTexts.size > TEXT_CACHE_LIMIT) {
+      for (const key of cacheTexts.keys()) {
+        if (cacheTexts.size <= TEXT_CACHE_LIMIT) break
+        cacheTexts.delete(key)
+      }
+    }
+    persist()
+    return index.roots
+  }
+
+  // In-memory scene stores prepared by scene-prepare.js, served under
+  // zcode-scene://<token>/<name>. Reads refresh recency so the active
+  // scene's store survives LRU eviction.
+  const SCENE_SCHEME = 'zcode-scene://'
+  const parseScenePath = value => {
+    const text = String(value)
+    if (!text.startsWith(SCENE_SCHEME)) return null
+    const rest = text.slice(SCENE_SCHEME.length)
+    const cut = rest.indexOf('/')
+    if (cut <= 0) return null
+    return { token: rest.slice(0, cut), inner: rest.slice(cut + 1).toLowerCase() }
+  }
+  const sceneBytes = (token, inner) => {
+    const store = sceneStores.get(token)
+    if (!store || !store.has(inner)) return null
+    const bytes = store.get(inner)
+    sceneStores.delete(token)
+    sceneStores.set(token, store)
+    return bytes
+  }
+  const bytesToDataUrl = (bytes, name) => {
+    let binary = ''
+    const chunk = 0x8000
+    for (let start = 0; start < bytes.length; start += chunk) {
+      binary += String.fromCharCode.apply(null, bytes.subarray(start, start + chunk))
+    }
+    const mime = /\.png$/i.test(name) ? 'image/png' : /\.mp4$/i.test(name) ? 'video/mp4' : 'application/octet-stream'
+    return `data:${mime};base64,${btoa(binary)}`
+  }
+
+  target.zcodeDesktop = {
+    isZcodeBridge: true,
+    hasSceneSource(token) { return sceneStores.has(String(token)) },
+    indexEntries,
+    registerSceneSource(token, files) {
+      sceneStores.set(String(token), files instanceof Map ? files : new Map(Object.entries(files)))
+      for (const key of [...sceneStores.keys()]) {
+        if (sceneStores.size <= 3) break
+        sceneStores.delete(key)
+      }
+    },
+    // Scene .pkg bytes persist in IndexedDB (disk-backed, large quota) so a
+    // prepared scene survives renderer restarts without re-picking folders.
+    async saveScenePkg(key, blob) {
+      try {
+        const db = await openPkgDb()
+        await new Promise((resolve, reject) => {
+          const tx = db.transaction('pkgs', 'readwrite')
+          tx.objectStore('pkgs').put(blob, String(key).toLowerCase())
+          tx.oncomplete = resolve
+          tx.onerror = () => reject(tx.error)
+        })
+        return true
+      } catch {
+        return false
+      }
+    },
+    async loadScenePkg(key) {
+      try {
+        const db = await openPkgDb()
+        return await new Promise(resolve => {
+          const tx = db.transaction('pkgs', 'readonly')
+          const request = tx.objectStore('pkgs').get(String(key).toLowerCase())
+          request.onsuccess = () => resolve(request.result || null)
+          request.onerror = () => resolve(null)
+        })
+      } catch {
+        return null
+      }
+    },
+    // Fully prepared scene store (manifest + extracted resources) persisted in
+    // IndexedDB: re-preparing after a restart becomes an IDB read instead of a
+    // full re-extraction of a 250 MB package.
+    async saveSceneArtifacts(key, files) {
+      const plain = files instanceof Map ? Object.fromEntries(files) : { ...files }
+      // Keyed per scene directory — idbPut takes exactly (key, value), so the
+      // key must be baked into the first argument (a stale third argument was
+      // silently dropped, piling every scene onto one key and never matching
+      // loadSceneArtifacts' `scene:<dir>` reads).
+      return idbPut(`scene:${String(key).toLowerCase()}`, { at: Date.now(), files: plain })
+    },
+    async loadSceneArtifacts(key) {
+      const record = await idbGet(`scene:${String(key).toLowerCase()}`)
+      return record && record.files ? record : null
+    },
+    // One-shot migration: builds before the per-scene keys piled every
+    // prepared scene onto the single legacy 'scene-artifacts' key. Returns the
+    // record once and drops it, so the caller can re-key it to the scene that
+    // actually claims it.
+    async takeLegacySceneArtifacts() {
+      const record = await idbGet('scene-artifacts')
+      if (!record || !record.files) return null
+      await idbDelete('scene-artifacts')
+      return record
+    },
+    // The full directory index cannot fit localStorage (quota) — keep it in
+    // IndexedDB so a restart restores the whole library without re-picking.
+    async saveIndexSnapshot() {
+      // Must match hydrateIndexSnapshot's read key ('index').
+      return idbPut('index', {
+        at: Date.now(),
+        dirs: [...dirs.entries()],
+        texts: [...cacheTexts.entries()],
+        roots: cacheRoots
+      })
+    },
+    async hydrateIndexSnapshot() {
+      const snapshot = await idbGet('index')
+      if (!snapshot) return false
+      if (snapshot.dirs && dirs.size === 0) {
+        for (const [key, listing] of snapshot.dirs) {
+          if (Array.isArray(listing) && !dirs.has(key)) dirs.set(key, listing)
+        }
+      }
+      if (snapshot.texts) {
+        for (const [key, text] of snapshot.texts) {
+          if (!cacheTexts.has(key)) cacheTexts.set(key, text)
+        }
+      }
+      if (Array.isArray(snapshot.roots)) {
+        for (const root of snapshot.roots) {
+          if (!cacheRoots.some(existing => existing.toLowerCase() === root.toLowerCase())) cacheRoots.push(root)
+        }
+      }
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('zcode-skins:index-hydrated'))
+      }
+      return true
+    },
+    async readDir(path) {
+      const listing = lookup(dirs, path)
+      return listing ? { entries: listing } : { error: 'not-indexed' }
+    },
+    async readFileText(path) {
+      const scene = parseScenePath(path)
+      if (scene) {
+        const bytes = sceneBytes(scene.token, scene.inner)
+        if (!bytes) return { error: 'scene-store-missing' }
+        const buffer = bytes instanceof Blob ? await bytes.arrayBuffer() : bytes
+        return { text: new TextDecoder().decode(buffer), truncated: false }
+      }
+      const key = String(path).toLowerCase()
+      const file = lookup(files, key)
+      if (file) {
+        try {
+          const text = await file.text()
+          // Cache only small files (manifests, project.json, vdf); large
+          // assets are re-read from the File handles within the session.
+          if (text.length <= 131072) {
+            cacheTexts.set(key, text)
+            persist()
+          }
+          return { text, truncated: false }
+        } catch (error) {
+          return { error: String(error?.message || error) }
+        }
+      }
+      const cachedText = lookup(cacheTexts, key)
+      if (cachedText !== undefined) return { text: cachedText, truncated: false }
+      return { error: 'not-indexed' }
+    },
+    async readFileDataUrl(path) {
+      const scene = parseScenePath(path)
+      if (scene) {
+        const value = sceneBytes(scene.token, scene.inner)
+        if (!value) throw new Error('scene-store-missing')
+        if (value instanceof Blob) return bytesToDataUrl(new Uint8Array(await value.arrayBuffer()), scene.inner)
+        return bytesToDataUrl(value, scene.inner)
+      }
+      const file = lookup(files, path)
+      if (!file) throw new Error('not-indexed')
+      return toDataUrl(file)
+    },
+    // Direct object URL — skips the base64 round-trip that made large scene
+    // resources (hundreds of MB) slow and memory-hungry.
+    async readFileObjectUrl(path) {
+      const scene = parseScenePath(path)
+      if (scene) {
+        const value = sceneBytes(scene.token, scene.inner)
+        if (!value) throw new Error('scene-store-missing')
+        if (value instanceof Blob) return URL.createObjectURL(value)
+        const mime = /\.png$/i.test(scene.inner) ? 'image/png' : /\.mp4$/i.test(scene.inner) ? 'video/mp4' : 'application/octet-stream'
+        return URL.createObjectURL(new Blob([value], { type: mime }))
+      }
+      const file = lookup(files, path)
+      if (!file) throw new Error('not-indexed')
+      return URL.createObjectURL(file)
+    },
+    async readFileBytes(path) {
+      const scene = parseScenePath(path)
+      if (scene) {
+        const value = sceneBytes(scene.token, scene.inner)
+        if (!value) throw new Error('scene-store-missing')
+        return value instanceof Blob ? value : value
+      }
+      const file = lookup(files, path)
+      if (!file) throw new Error('not-indexed')
+      return file.arrayBuffer()
+    },
+    async selectPaths({ directories = false } = {}) {
+      const picked = (await pickFiles({ directories })) || []
+      const roots = indexEntries(picked)
+      if (!directories) return picked.map(entry => entry.absPath)
+      return roots.length ? [roots[0]] : []
+    }
+  }
+  return true
+}
+
+function pickWithNativeDialog({ directories }) {
+  return new Promise(resolve => {
+    const input = document.createElement('input')
+    input.type = 'file'
+    if (directories) {
+      input.setAttribute('webkitdirectory', '')
+      input.setAttribute('directory', '')
+    }
+    input.multiple = true
+    input.style.cssText = 'position:fixed;left:-9999px;top:-9999px;opacity:0;'
+    let settled = false
+    const finish = value => {
+      if (settled) return
+      settled = true
+      input.remove()
+      resolve(value)
+    }
+    input.addEventListener('cancel', () => finish([]))
+    input.addEventListener('change', () => {
+      try {
+        finish([...(input.files || [])])
+      } catch {
+        finish([])
+      }
+    })
+    document.body.appendChild(input)
+    input.click()
+  })
+}
+
+function installZcodeFileBridge() {
+  if (typeof window === 'undefined') return false
+  if (window.zcodeDesktop) return true
+  // Only install in ZCode Desktop (window.zcode exposed by its preload). In
+  // Hermes hosts the real hermesDesktop bridge must keep being used.
+  const zcode = window.zcode
+  if (!zcode) return false
+  return attachZcodeFileBridge(window, {
+    zcode,
+    pickFiles: ({ directories }) => {
+      const files = pickWithNativeDialog({ directories })
+      return Promise.resolve(files).then(list => list.map(file => ({
+        absPath: resolveHostPath(file),
+        file
+      })))
+    }
+  })
+}
+
+function resolveHostPath(file) {
+  try {
+    const viaWebUtils = window.zcode?.getPathForFile?.(file)
+    if (typeof viaWebUtils === 'string' && viaWebUtils.trim()) return viaWebUtils.trim()
+  } catch { /* webUtils unavailable — fall through to the legacy property. */ }
+  return typeof file.path === 'string' && file.path.trim() ? file.path.trim() : null
+}
+
+// ─── Submodule: ZCode Settings Sidebar Entry ──────────────────
+
+/**
+ * ZCode Settings Entry — sidebar item + inline panel
+ * Installs a "皮肤中心 / Skin Center" item into ZCode Desktop's settings
+ * sidebar, directly below the built-in 外观 (Appearance) item. Clicking it
+ * swaps the settings content pane (the same right-hand surface every native
+ * section uses) for the Skin Center page, exactly like a native section —
+ * no modal is involved. The Ctrl+Shift+S modal remains as a global shortcut.
+ *
+ * ZCode builds that sidebar with React from a hard-coded config array and
+ * exposes no extension point, so we wait for the sidebar to mount and insert
+ * a plain button mirroring the native items' markup — their Tailwind classes
+ * are guaranteed to exist in the app stylesheet because real items emit them.
+ * React re-renders may drop the node at any time, so the observer re-inserts
+ * it and re-attaches the panel while the settings page is open.
+ */
+
+const NAV_BUTTON_FLAG = 'data-zcode-skins-nav'
+const PANEL_FLAG = 'data-zcode-skins-panel'
+const HIDDEN_FLAG = 'data-zcode-skins-hidden'
+// aria-labels ZCode puts on its built-in Appearance nav item (zh + en).
+const APPEARANCE_SELECTOR = 'nav button[aria-label="外观"], nav button[aria-label="Appearance"]'
+
+const NAV_ACTIVE_CLASSES = 'bg-surface-hover text-foreground'
+const NAV_IDLE_CLASSES = 'text-foreground-subtle hover:bg-surface-hover hover:text-foreground'
+
+function navLabel() {
+  return typeof navigator !== 'undefined' && navigator.language?.startsWith('zh') ? '皮肤中心' : 'Skin Center'
+}
+
+function createNavButton(onClick) {
+  const button = document.createElement('button')
+  button.type = 'button'
+  button.setAttribute('aria-label', navLabel())
+  button.setAttribute(NAV_BUTTON_FLAG, '1')
+  // Same class strings as ZCode's own sidebar items (ekn component), so the
+  // entry is visually indistinguishable from native navigation items.
+  button.className = `flex h-8 w-full items-center gap-2 rounded-xl px-2.5 text-left transition-colors max-lg:mx-auto max-lg:size-10 max-lg:justify-center max-lg:px-0 ${NAV_IDLE_CLASSES}`
+  button.innerHTML = `
+    <span class="flex size-4 shrink-0 items-center justify-center text-current">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none"
+        stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"
+        class="size-4 text-foreground" aria-hidden="true">
+        <circle cx="13.5" cy="6.5" r=".5" fill="currentColor"></circle>
+        <circle cx="17.5" cy="10.5" r=".5" fill="currentColor"></circle>
+        <circle cx="8.5" cy="7.5" r=".5" fill="currentColor"></circle>
+        <circle cx="6.5" cy="12.5" r=".5" fill="currentColor"></circle>
+        <path d="M12 2C6.5 2 2 6.5 2 12s4.5 10 10 10c.926 0 1.648-.746 1.648-1.688 0-.437-.18-.835-.437-1.125-.29-.289-.438-.652-.438-1.125a1.64 1.64 0 0 1 1.668-1.668h1.996c3.051 0 5.555-2.503 5.555-5.554C21.965 6.012 17.461 2 12 2z"></path>
+      </svg>
+    </span>
+    <span class="min-w-0 flex-1 max-lg:sr-only">
+      <span class="truncate text-ui-base text-foreground">${navLabel()}</span>
+    </span>`
+  button.addEventListener('click', onClick)
+  return button
+}
+
+function installSettingsEntry({ renderPanelInto, panelStyleText = '' }) {
+  if (typeof document === 'undefined' || typeof MutationObserver === 'undefined') return () => {}
+  // panelStyleText is intentionally NOT injected: the fallback sheet declares
+  // a cascade layer that sorts AFTER ZCode's own utilities layer, so its
+  // fixed .text-ui-sm/.rounded-lg/.shadow-* rules would override the app's
+  // fluid 界面字号 scale and corner radii app-wide the moment the panel
+  // opens (reported as "字号自动变小 / 边框变方"). The light-DOM panel
+  // resolves its classes from ZCode's own stylesheet instead.
+
+  let navButton = null
+  let panel = null
+  let panelDispose = null
+  let panelThemeObserver = null
+  let hiddenNative = []
+  let savedActiveButton = null
+  let frame = 0
+  let sectionObserver = null
+
+  const setNavActive = active => {
+    if (!navButton) return
+    navButton.classList.remove(...[...(active ? NAV_IDLE_CLASSES : NAV_ACTIVE_CLASSES).split(' ')])
+    navButton.classList.add(...[...(active ? NAV_ACTIVE_CLASSES : NAV_IDLE_CLASSES).split(' ')])
+    if (active) navButton.setAttribute('aria-current', 'page')
+    else navButton.removeAttribute('aria-current')
+  }
+
+  const hideNativeActiveHighlight = () => {
+    const nav = navButton?.closest('nav')
+    const active = nav?.querySelector('button[aria-current="page"]')
+    if (!active || active === navButton) return
+    savedActiveButton = { button: active, className: active.className, ariaCurrent: active.getAttribute('aria-current') }
+    active.classList.remove(...NAV_ACTIVE_CLASSES.split(' '))
+    active.classList.add(...NAV_IDLE_CLASSES.split(' '))
+    active.removeAttribute('aria-current')
+  }
+
+  const restoreNativeActiveHighlight = () => {
+    const saved = savedActiveButton
+    savedActiveButton = null
+    if (!saved || !saved.button.isConnected) return
+    saved.button.className = saved.className
+    if (saved.ariaCurrent) saved.button.setAttribute('aria-current', saved.ariaCurrent)
+  }
+
+  const closePanel = () => {
+    if (!panel) return
+    sectionObserver?.disconnect()
+    sectionObserver = null
+    panelThemeObserver?.disconnect()
+    panelThemeObserver = null
+    panelDispose?.()
+    panelDispose = null
+    panel.remove()
+    panel = null
+    for (const el of hiddenNative) {
+      el.style.removeProperty('display')
+      el.removeAttribute(HIDDEN_FLAG)
+    }
+    hiddenNative = []
+    restoreNativeActiveHighlight()
+    setNavActive(false)
+  }
+
+  const openPanel = () => {
+    if (panel) return
+    // Settings content pane: the grid root carries data-active-section and the
+    // scrollable section surface is its <main>.
+    const root = document.querySelector('[data-active-section]')
+    const main = root?.querySelector?.('main')
+    if (!root || !main) {
+      // Settings page not mounted (or markup changed) — fall back to the modal.
+      window.dispatchEvent(new CustomEvent('zcode-skins:open'))
+      return
+    }
+    // Light DOM on purpose: the panel inherits ZCode's own font, tokens, and
+    // Tailwind utilities so it reads as a native settings section. No extra
+    // stylesheet is injected — a later cascade layer would override the
+    // app's own utilities app-wide (see the note above installSettingsEntry).
+    panel = document.createElement('div')
+    panel.setAttribute(PANEL_FLAG, '1')
+    panel.style.cssText = 'display:block;width:100%;'
+    const mount = document.createElement('div')
+    mount.style.cssText = 'width:100%;'
+    panel.appendChild(mount)
+    try {
+      panelDispose = renderPanelInto?.(mount) || null
+    } catch {
+      panel.remove()
+      panel = null
+      window.dispatchEvent(new CustomEvent('zcode-skins:open'))
+      return
+    }
+    const syncTheme = () => {
+      const isDark = renderedThemeMode() === 'dark'
+      panel.setAttribute('data-zc-theme', isDark ? 'dark' : 'light')
+    }
+    syncTheme()
+    panelThemeObserver = new MutationObserver(syncTheme)
+    panelThemeObserver.observe(document.documentElement, { attributes: true, attributeFilter: ['class'] })
+    panelThemeObserver.observe(document.body, { attributes: true, attributeFilter: ['class'] })
+    for (const child of [...main.children]) {
+      if (child === panel) continue
+      child.setAttribute(HIDDEN_FLAG, '1')
+      child.style.display = 'none'
+      hiddenNative.push(child)
+    }
+    main.appendChild(panel)
+    hideNativeActiveHighlight()
+    setNavActive(true)
+    // Any navigation away from our pseudo-section closes the panel.
+    sectionObserver = new MutationObserver(() => {
+      if (root.getAttribute('data-active-section') !== undefined) closePanel()
+    })
+    sectionObserver.observe(root, { attributes: true, attributeFilter: ['data-active-section'] })
+  }
+
+  const onNavClickCapture = event => {
+    if (!panel) return
+    const button = event.target?.closest?.('button')
+    if (!button) return
+    if (button === navButton) return
+    if (button.closest('nav') || button.getAttribute('aria-label')?.includes('返回') ||
+        button.getAttribute('aria-label')?.toLowerCase().includes('back')) {
+      closePanel()
+    }
+  }
+
+  const ensurePlaced = () => {
+    if (panel && !panel.isConnected) {
+      // The settings page unmounted (返回工作区) while the panel was open.
+      sectionObserver?.disconnect()
+      sectionObserver = null
+      panelThemeObserver?.disconnect()
+      panelThemeObserver = null
+      panelDispose?.()
+      panelDispose = null
+      panel = null
+      hiddenNative = []
+      savedActiveButton = null
+      setNavActive(false)
+    }
+    if (navButton && document.contains(navButton)) return
+    const appearanceButton = document.querySelector(APPEARANCE_SELECTOR)
+    if (!appearanceButton || !appearanceButton.parentNode) return
+    if (!navButton) navButton = createNavButton(openPanel)
+    appearanceButton.after(navButton)
+    document.addEventListener('click', onNavClickCapture, true)
+  }
+
+  // Coalesce mutation bursts into one check per animation frame.
+  const schedule = () => {
+    if (frame) return
+    frame = requestAnimationFrame(() => {
+      frame = 0
+      try {
+        ensurePlaced()
+      } catch {
+        // Sidebar not ready yet; the next mutation batch retries.
+      }
+    })
+  }
+
+  const observer = new MutationObserver(schedule)
+  observer.observe(document.body, { childList: true, subtree: true })
+  schedule()
+
+  return () => {
+    if (frame) cancelAnimationFrame(frame)
+    frame = 0
+    observer.disconnect()
+    sectionObserver?.disconnect()
+    sectionObserver = null
+    panelThemeObserver?.disconnect()
+    panelThemeObserver = null
+    document.removeEventListener('click', onNavClickCapture, true)
+    closePanel()
+    if (navButton) {
+      navButton.remove()
+      navButton = null
+    }
+  }
+}
+
+// ─── Submodule: ZCode Modal Host ─────────────────────────────
+
+/**
+ * ZCode Modal Host
+ * Mounts the Skin Center modal into ZCode Desktop DOM. The entry point lives
+ * in ZCode's settings sidebar (see zcode-settings-nav.js) plus the
+ * Ctrl+Shift+S / Alt+S shortcut handled here.
  *
  * Everything renders inside a shadow root with its own stylesheet: ZCode's
  * Tailwind build omits many utilities this UI uses, and host styles would
  * otherwise leak in (or, worse, be missing) — leaving the panel transparent
  * and letting the wallpaper bleed through its text.
  */
+
 
 
 
@@ -5547,6 +6829,20 @@ function setupZCodeFloatingHost({ store, controller, prepareScene }) {
   const mountPoint = document.createElement('div')
   shadow.appendChild(mountPoint)
 
+  // Renders the Skin Center page into the settings content pane (inline panel
+  // mode). Returns a dispose function for when the panel closes.
+  function renderPanelInto(mountEl) {
+    const root = createRoot(mountEl)
+    root.render(jsx(SkinCenterPage, { store, controller, prepareScene }))
+    return () => root.unmount()
+  }
+
+  // Sidebar entry + inline panel live in ZCode's own settings page (outside
+  // this shadow root); the modal stays as the global shortcut surface. No
+  // fallback sheet is injected into the light DOM — its cascade layer would
+  // override ZCode's own utilities app-wide (font scale, radii, shadows).
+  const disposeSettingsEntry = installSettingsEntry({ renderPanelInto })
+
   function RootWrapper() {
     const [open, setOpen] = useState(false)
 
@@ -5565,13 +6861,18 @@ function setupZCodeFloatingHost({ store, controller, prepareScene }) {
       return () => window.removeEventListener('keydown', handleKeyDown)
     }, [open])
 
+    // Fallback opener for when the settings page is unavailable.
+    useEffect(() => {
+      const handleOpenRequest = () => setOpen(true)
+      window.addEventListener('zcode-skins:open', handleOpenRequest)
+      return () => window.removeEventListener('zcode-skins:open', handleOpenRequest)
+    }, [])
+
     // Mirror ZCode's light/dark state onto the shadow host so the overlay
     // palette follows the app theme instead of being hard-coded dark.
     useEffect(() => {
       const sync = () => {
-        const isDark = document.documentElement.classList.contains('dark') ||
-          document.body.classList.contains('dark') ||
-          window.matchMedia?.('(prefers-color-scheme: dark)').matches
+        const isDark = renderedThemeMode() === 'dark'
         hostContainer.setAttribute('data-zc-theme', isDark ? 'dark' : 'light')
       }
       sync()
@@ -5583,18 +6884,8 @@ function setupZCodeFloatingHost({ store, controller, prepareScene }) {
 
     return jsxs('div', {
       children: [
-        // Floating pill trigger
-        !open && jsx('button', {
-          type: 'button',
-          onClick: () => setOpen(true),
-          title: 'ZCode 皮肤中心 (Ctrl+Shift+S)',
-          className: 'zcode-skin-floating-trigger',
-          children: [
-            jsx('span', { className: 'text-sm', children: '🎨' }),
-            jsx('span', { className: 'hidden sm:inline-block', children: '换肤' })
-          ]
-        }),
-        // Modal
+        // Modal (Ctrl+Shift+S / Alt+S; there is deliberately no floating
+        // trigger on the main window — the sidebar entry opens the inline panel)
         jsx(ZCodeSkinCenterModal, {
           isOpen: open,
           onClose: () => setOpen(false),
@@ -5606,7 +6897,13 @@ function setupZCodeFloatingHost({ store, controller, prepareScene }) {
     })
   }
 
-  createRoot(mountPoint).render(jsx(RootWrapper, {}))
+  const root = createRoot(mountPoint)
+  root.render(jsx(RootWrapper, {}))
+  return () => {
+    disposeSettingsEntry()
+    root.unmount()
+    hostContainer.remove()
+  }
 }
 
 // ─── Plugin Registration Entry ────────────────────────────────
@@ -5620,7 +6917,8 @@ export default {
   register(ctx) {
     ctx?.i18n?.register?.(I18N_DICTIONARY)
     const store = createSkinStore(ctx)
-    const backdropManager = new BackdropManager()
+    const prepareScene = dir => ctx?.rest?.('/scene/prepare', { method: 'POST', body: { dir } })
+    const backdropManager = new BackdropManager({ prepareScene })
     const glassController = new GlassController()
     const rangeController = new RangeController()
     rangeController.start()

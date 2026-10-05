@@ -11,8 +11,9 @@ Copyright (c) 2026, zhu1090093659. All rights reserved.
 Historical upstream notice: Copyright (c) 2026, dsh-external contributors.
 Original module names identify @linxin666/dsh-client-ui-skin-center.
 
-The three vendored files match the pinned originals after line-ending
-normalization. Generated desktop/helper bundles remove module imports/exports,
+The vendored modules are derived from the pinned originals, with the verified
+Hermes skin 1.3.5 cursor, X-ray, shake, rendering-budget and lifecycle fixes
+adapted for ZCode skins 1.1.0. Generated desktop/helper bundles remove module imports/exports,
 transpile TypeScript where required and concatenate/bundle the source. Hermes
 bridge and lifecycle adapters are implemented outside these vendor files.
 See LICENSING.md and THIRD-PARTY-NOTICES.md for scope and distribution notices.

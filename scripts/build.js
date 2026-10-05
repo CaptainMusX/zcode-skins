@@ -25,13 +25,18 @@ const watcherCode = fs.readFileSync(path.join(rootDir, 'src/engine/theme-watcher
 const weLibraryCode = fs.readFileSync(path.join(rootDir, 'src/engine/we-library.js'), 'utf8')
 const sceneCode = fs.readFileSync(path.join(rootDir, 'src/engine/scene-player.js'), 'utf8')
 const webCode = fs.readFileSync(path.join(rootDir, 'src/engine/web-player.js'), 'utf8')
+const scenePrepareCode = fs.readFileSync(path.join(rootDir, 'src/engine/scene-prepare.js'), 'utf8')
 const playerCode = fs.readFileSync(path.join(rootDir, 'third_party/dsh-skins/we-player-source.ts'), 'utf8')
 const shimCode = fs.readFileSync(path.join(rootDir, 'third_party/dsh-skins/we-shim-source.ts'), 'utf8')
+const pkgExtractCode = fs.readFileSync(path.join(rootDir, 'third_party/dsh-skins/pkg-extract.ts'), 'utf8')
 const tryOnBannerCode = fs.readFileSync(path.join(rootDir, 'src/ui/TryOnBanner.js'), 'utf8')
 const studioCode = fs.readFileSync(path.join(rootDir, 'src/ui/CustomThemeStudio.js'), 'utf8')
 const wePanelCode = fs.readFileSync(path.join(rootDir, 'src/ui/WallpaperEnginePanel.js'), 'utf8')
 const pageCode = fs.readFileSync(path.join(rootDir, 'src/ui/SkinCenterPage.js'), 'utf8')
+const fileBridgeCode = fs.readFileSync(path.join(rootDir, 'src/adapter/zcode-file-bridge.js'), 'utf8')
+const settingsNavCode = fs.readFileSync(path.join(rootDir, 'src/adapter/zcode-settings-nav.js'), 'utf8')
 const modalHostCode = fs.readFileSync(path.join(rootDir, 'src/adapter/zcode-modal-host.js'), 'utf8')
+const skinsCss = fs.readFileSync(path.join(rootDir, 'src/styles/zcode-skins.css'), 'utf8')
 
 function stripImportsAndExports(code) {
   return code
@@ -105,7 +110,13 @@ stripImportsAndExports(studioCode),
 stripImportsAndExports(wePanelCode),
 '// ─── Submodule: Skin Center Page ─────────────────────────────',
 stripImportsAndExports(pageCode),
-'// ─── Submodule: ZCode Modal & Floating Host ──────────────────',
+`// ─── Stylesheet (shadow-root CSS, inlined) ────────────────────
+const SKINS_CSS = ${JSON.stringify(skinsCss)}`,
+'// ─── Submodule: ZCode Local File Bridge ───────────────────────',
+stripImportsAndExports(fileBridgeCode),
+'// ─── Submodule: ZCode Settings Sidebar Entry ──────────────────',
+stripImportsAndExports(settingsNavCode),
+'// ─── Submodule: ZCode Modal Host ─────────────────────────────',
 stripImportsAndExports(modalHostCode),
 `// ─── Plugin Registration Entry ────────────────────────────────
 const PLUGIN_ID = 'zcode-skins'
@@ -118,7 +129,8 @@ export default {
   register(ctx) {
     ctx?.i18n?.register?.(I18N_DICTIONARY)
     const store = createSkinStore(ctx)
-    const backdropManager = new BackdropManager()
+    const prepareScene = dir => ctx?.rest?.('/scene/prepare', { method: 'POST', body: { dir } })
+    const backdropManager = new BackdropManager({ prepareScene })
     const glassController = new GlassController()
     const rangeController = new RangeController()
     rangeController.start()
@@ -222,28 +234,48 @@ import { BackdropManager } from '../src/engine/backdrop-manager.js'
 import { GlassController } from '../src/engine/glass-controller.js'
 import { RangeController } from '../src/engine/range-controller.js'
 import { SkinController } from '../src/engine/skin-controller.js'
-import { watchRootTheme } from '../src/engine/theme-watcher.js'
+import { watchRootTheme, renderedThemeMode } from '../src/engine/theme-watcher.js'
 import { BUILTIN_SKINS } from '../src/catalog/builtin-skins.js'
+import { installZcodeFileBridge } from '../src/adapter/zcode-file-bridge.js'
+import { createRendererScenePreparer, rehydrateSceneWallpaper } from '../src/engine/scene-prepare.js'
 import { setupZCodeFloatingHost } from '../src/adapter/zcode-modal-host.js'
 
 function boot() {
   if (typeof window === 'undefined' || window.__ZCODE_SKINS_INJECTED__) return
   window.__ZCODE_SKINS_INJECTED__ = true
+  window.__ZCODE_SKINS_VERSION__ = '${pkg.version}'
+
+  // Expose window.zcodeDesktop (readDir/selectPaths/...) before any consumer
+  // grabs a bridge reference. No-op outside ZCode Desktop.
+  installZcodeFileBridge()
 
   const store = createSkinStore()
-  const backdropManager = new BackdropManager()
+  const prepareScene = createRendererScenePreparer()
+  const backdropManager = new BackdropManager({ prepareScene })
   const glassController = new GlassController()
   const rangeController = new RangeController()
   rangeController.start()
   const controller = new SkinController(store, BUILTIN_SKINS, backdropManager, glassController)
-  watchRootTheme(store, controller)
+  const disposeThemeWatcher = watchRootTheme(store, controller)
 
-  const isDark = document.documentElement.classList.contains('dark') ||
-    document.body.classList.contains('dark') ||
-    window.matchMedia?.('(prefers-color-scheme: dark)').matches
+  const isDark = renderedThemeMode() === 'dark'
   controller.sync('zcode-default', isDark ? 'dark' : 'light')
 
-  setupZCodeFloatingHost({ store, controller })
+  const disposeFloatingHost = setupZCodeFloatingHost({ store, controller, prepareScene })
+  window.__ZCODE_SKINS_DISPOSE__ = () => {
+    disposeFloatingHost?.()
+    disposeThemeWatcher?.()
+    rangeController.destroy()
+    controller.destroy()
+    window.__ZCODE_SKINS_INJECTED__ = false
+    delete window.__ZCODE_SKINS_DISPOSE__
+  }
+  // Scene wallpapers reference in-memory stores that a restart empties;
+  // silently re-prepare the persisted one so it comes back on its own.
+  void Promise.resolve(window.zcodeDesktop?.hydrateIndexSnapshot?.()).then(() => rehydrateSceneWallpaper(controller))
+  // Restore the full directory index from IndexedDB (localStorage cannot hold
+  // it); the panel rescans when the hydration lands.
+
   console.log('[zcode-skins] ZCode Desktop Skin Center initialized successfully!')
 }
 
@@ -276,10 +308,14 @@ try {
     format: 'iife',
     platform: 'browser',
     target: 'es2022',
-    alias: {
-      '@hermes/plugin-sdk': path.join(rootDir, 'src/adapter/zcode-sdk-shim.js'),
-      'nanostores': path.join(rootDir, 'src/adapter/zcode-sdk-shim.js')
-    },
+      alias: {
+        '@hermes/plugin-sdk': path.join(rootDir, 'src/adapter/zcode-sdk-shim.js'),
+        'nanostores': path.join(rootDir, 'src/adapter/zcode-sdk-shim.js'),
+        'node:buffer': path.join(rootDir, 'src/adapter/node-shims/buffer.js'),
+        'node:fs': path.join(rootDir, 'src/adapter/node-shims/fs.js'),
+        'node:path': path.join(rootDir, 'src/adapter/node-shims/path.js'),
+        'node:zlib': path.join(rootDir, 'src/adapter/node-shims/zlib.js')
+      },
     define: {
       'process.env.NODE_ENV': '"production"'
     },
@@ -287,7 +323,8 @@ try {
   })
   console.log('[build] Standalone ZCode Desktop injection bundle compiled to dist/zcode-skins.bundle.js')
 } catch (e) {
-  console.error('[build] Warning: Could not compile dist bundle:', e)
+  console.error('[build] Could not compile dist bundle:', e)
+  process.exitCode = 1
 } finally {
   if (fs.existsSync(tempEntry)) fs.unlinkSync(tempEntry)
 }

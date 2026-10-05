@@ -3,12 +3,18 @@ import { loadWebWallpaper } from './web-player.js'
 
 const ROOT_ID = 'zcode-skins-backdrop-root'
 
+/** Local file bridge: ZCode Desktop installs window.zcodeDesktop, Hermes
+ * hosts provide window.hermesDesktop. */
+const getLocalBridge = () =>
+  typeof window !== 'undefined' ? (window.zcodeDesktop || window.hermesDesktop) : null
+
 export function normalizeMediaSource(input, type = 'image') {
   if (typeof input !== 'string' || !input.trim()) return null
   const source = input.trim()
   if (/^https?:\/\//i.test(source)) return source
   if (type === 'image' && /^data:image\/(svg\+xml|png|jpeg|webp);/i.test(source)) return source
   if (type === 'video' && /^hermes-media:\/\/stream\/[^\s?#]+$/i.test(source)) return source
+  if (/^zcode-scene:\/\//i.test(source)) return source
   if (/^file:\/\/\//i.test(source)) return source
   if (/^[a-zA-Z]:[\\/]/.test(source)) {
     const normalized = source.replace(/\\/g, '/')
@@ -19,7 +25,8 @@ export function normalizeMediaSource(input, type = 'image') {
 
 /** Fixed backdrop sits behind the app shell and never receives input. */
 export class BackdropManager {
-  constructor() {
+  constructor({ prepareScene = null } = {}) {
+    this.prepareScene = prepareScene
     this.root = null
     this.media = null
     this.mask = null
@@ -29,7 +36,13 @@ export class BackdropManager {
     this.sceneIframe = null
     this.sceneManifest = null
     this.sceneUrls = []
+    this.sceneLoad = null
+    this.sceneReloads = 0
     this.sceneListeners = false
+    this.webIframe = null
+    this.cursorForwardInit = false
+    this.cursorFrame = null
+    this.pendingCursor = null
     this.videoElement = null
     this.pauseOnHidden = true
     this.fitValue = 'cover'
@@ -37,10 +50,22 @@ export class BackdropManager {
     this.soundValue = false
     this.volumeValue = 100
     this.handleSceneMessage = event => {
-      if (event.source !== this.sceneIframe?.contentWindow || event.data?.type !== 'dsh-scene-needs-reload') return
-      this.sceneIframe.srcdoc = scenePlayerHtml(this.soundValue, this.volumeValue)
+      if (!this.sceneIframe || event.source !== this.sceneIframe.contentWindow) return
+      if (event.data?.type === 'dsh-scene-failed') {
+        this.stopScene()
+        this.reportFallback()
+        if (!this.media?.querySelector('img')) this.fail(this.currentKey)
+      } else if (event.data?.type === 'dsh-scene-needs-reload') {
+        // Repeated context loss must fall back instead of creating a reload loop.
+        if (this.sceneReloads++ >= 1) {
+          this.stopScene()
+          this.reportFallback()
+          if (!this.media?.querySelector('img')) this.fail(this.currentKey)
+        } else this.sceneIframe.srcdoc = scenePlayerHtml(this.soundValue, this.volumeValue)
+      }
     }
     this.handleVisibility = () => {
+      if (document.hidden) this.onCursorLeave?.()
       if (this.videoElement && this.pauseOnHidden) {
         if (document.hidden) this.videoElement.pause()
         else void this.videoElement.play()?.catch(() => {})
@@ -63,6 +88,53 @@ export class BackdropManager {
     this.mask.style.cssText = 'position:absolute;inset:0;'
     this.root.replaceChildren(this.media, this.mask)
     document.body.prepend(this.root)
+    this.ensureCursorForwarding()
+  }
+
+  // Capture host movement without intercepting clicks. Deliver the newest
+  // sample once per animation frame, including the last event of a short drag.
+  ensureCursorForwarding() {
+    if (this.cursorForwardInit || typeof window === 'undefined') return
+    this.cursorForwardInit = true
+    this.onCursorMove = event => {
+      if (document.hidden || (!this.sceneIframe && !this.webIframe)) return
+      this.pendingCursor = { x: event.clientX / Math.max(window.innerWidth, 1),
+        y: event.clientY / Math.max(window.innerHeight, 1) }
+      if (this.cursorFrame !== null) return
+      this.cursorFrame = window.requestAnimationFrame(() => {
+        this.cursorFrame = null
+        const cursor = this.pendingCursor
+        this.pendingCursor = null
+        if (cursor) this.forwardCursor(cursor.x, cursor.y, true)
+      })
+    }
+    this.onCursorLeave = () => {
+      if (this.cursorFrame !== null) window.cancelAnimationFrame(this.cursorFrame)
+      this.cursorFrame = null
+      this.pendingCursor = null
+      this.forwardCursor(0.5, 0.5, false)
+    }
+    window.addEventListener('mousemove', this.onCursorMove, { passive: true, capture: true })
+    window.addEventListener('mouseleave', this.onCursorLeave)
+    document.addEventListener('mouseleave', this.onCursorLeave)
+    window.addEventListener('blur', this.onCursorLeave)
+  }
+
+  forwardCursor(x, y, active) {
+    const position = frame => {
+      const rect = frame?.getBoundingClientRect?.()
+      if (!rect?.width || !rect?.height) return { x, y, active }
+      const px = (x * window.innerWidth - rect.left) / rect.width
+      const py = (y * window.innerHeight - rect.top) / rect.height
+      return { x: Math.min(1, Math.max(0, px)), y: Math.min(1, Math.max(0, py)),
+        active: active && px >= 0 && px <= 1 && py >= 0 && py <= 1 }
+    }
+    try {
+      this.sceneIframe?.contentWindow?.postMessage({ type: 'dsh-set-cursor', ...position(this.sceneIframe) }, '*')
+    } catch { /* The scene frame may still be loading. */ }
+    try {
+      this.webIframe?.contentWindow?.postMessage({ type: 'hermes-we-cursor', ...position(this.webIframe) }, '*')
+    } catch { /* The web frame may still be loading. */ }
   }
 
   update({ enabled, type = 'image', src, sceneFrame = null, webPreview = null, blur = 0, occlusion = 35,
@@ -105,9 +177,11 @@ export class BackdropManager {
       return true
     }
     this.currentKey = key
-    this.releaseSceneUrls()
-    this.sceneIframe = null
+    this.lastMediaIssue = null
+    this.releaseMedia()
+    this.sceneReloads = 0
     this.sceneManifest = null
+    this.webIframe = null
     this.media.replaceChildren()
     this.media.style.backgroundImage = 'none'
     if (type === 'scene') {
@@ -129,7 +203,8 @@ export class BackdropManager {
       this.videoElement = video
       this.ensurePlaybackListeners()
       if (this.modeValue === 'frame') {
-        video.addEventListener('loadeddata', () => {
+      video.addEventListener('loadeddata', () => {
+          if (this.currentKey !== key || this.videoElement !== video) return
           try {
             const canvas = document.createElement('canvas')
             const scale = Math.min(1, 1920 / Math.max(video.videoWidth, video.videoHeight))
@@ -141,7 +216,7 @@ export class BackdropManager {
             image.style.cssText = `width:100%;height:100%;object-fit:${this.fitValue};display:block;`
             if (this.currentKey === key) this.media.replaceChildren(image)
           } catch { /* The live video remains visible if capture is blocked by CORS. */ }
-          finally { video.pause(); this.videoElement = null }
+          finally { video.pause(); if (this.videoElement === video) this.videoElement = null }
         }, { once: true })
       }
       this.media.appendChild(video)
@@ -152,7 +227,7 @@ export class BackdropManager {
       let triedBridge = false
       image.onerror = async () => {
         const local = /^[a-zA-Z]:[\\/]/.test(src) || /^file:\/\/\//i.test(src)
-        const bridge = typeof window !== 'undefined' ? (window.zcodeDesktop || window.hermesDesktop) : null
+        const bridge = getLocalBridge()
         if (!triedBridge && local && bridge?.readFileDataUrl) {
           triedBridge = true
           try {
@@ -167,13 +242,15 @@ export class BackdropManager {
         this.fail(key)
       }
       image.src = safeSource
-      image.style.cssText = 'width:100%;height:100%;object-fit:cover;display:block;'
+      image.style.cssText = `width:100%;height:100%;object-fit:${this.fitValue};display:block;`
       this.media.appendChild(image)
     }
     return true
   }
 
   syncMediaOptions(type, options) {
+    const image = this.media?.querySelector('img')
+    if (image) image.style.objectFit = options.fit
     const video = this.media?.querySelector('video')
     if (video) {
       video.style.objectFit = options.fit
@@ -208,7 +285,7 @@ export class BackdropManager {
         image.onload = null
       } catch { /* Keep the source preview as a fallback. */ }
     }
-    const bridge = typeof window !== 'undefined' ? window.hermesDesktop : null
+    const bridge = getLocalBridge()
     const load = async () => {
       try {
         const data = await bridge.readFileDataUrl(framePath)
@@ -225,10 +302,12 @@ export class BackdropManager {
   }
 
   async showScene(key, manifestPath) {
-    const bridge = typeof window !== 'undefined' ? window.hermesDesktop : null
+    const bridge = getLocalBridge()
+    const load = new AbortController()
+    this.sceneLoad = load
     try {
-      const scene = await loadSceneManifest(bridge, manifestPath)
-      if (this.currentKey !== key) {
+      const scene = await loadSceneManifest(bridge, manifestPath, this.prepareScene, load.signal)
+      if (load.signal.aborted || this.currentKey !== key) {
         scene.objectUrls.forEach(url => URL.revokeObjectURL(url))
         return
       }
@@ -239,6 +318,7 @@ export class BackdropManager {
       frame.setAttribute('aria-hidden', 'true')
       frame.style.cssText = `position:absolute;inset:0;width:100%;height:100%;border:0;pointer-events:none;object-fit:${this.fitValue};`
       frame.onload = () => {
+        if (this.sceneIframe !== frame) return
         frame.contentWindow?.postMessage({ type: 'hermes-scene-manifest', manifest: scene.manifest }, '*')
         frame.contentWindow?.postMessage({ type: 'dsh-set-fit', fit: this.fitValue }, '*')
         frame.contentWindow?.postMessage({ type: 'dsh-set-pause', paused: document.hidden && this.pauseOnHidden }, '*')
@@ -252,10 +332,13 @@ export class BackdropManager {
       frame.srcdoc = scenePlayerHtml(this.soundValue, this.volumeValue)
       this.media.appendChild(frame)
       this.onVisibilityChange?.()
-    } catch {
+    } catch (error) {
       // A decoded full-resolution frame remains visible if the WebGL scene
       // cannot be prepared by this Hermes build.
-      if (this.currentKey === key && !this.media.querySelector('img')) this.fail(key)
+      if (!load.signal.aborted && this.currentKey === key) this.reportFallback(error)
+      if (!load.signal.aborted && this.currentKey === key && !this.media?.querySelector('img')) this.fail(key)
+    } finally {
+      if (this.sceneLoad === load) this.sceneLoad = null
     }
   }
 
@@ -267,7 +350,7 @@ export class BackdropManager {
   }
 
   async showWeb(key, fileUrl, sourcePath) {
-    const bridge = typeof window !== 'undefined' ? window.hermesDesktop : null
+    const bridge = getLocalBridge()
     try {
       const html = await loadWebWallpaper(bridge, sourcePath)
       if (this.currentKey !== key) return
@@ -277,6 +360,7 @@ export class BackdropManager {
       frame.style.cssText = 'position:absolute;inset:0;width:100%;height:100%;border:0;pointer-events:none;'
       frame.style.objectFit = this.fitValue
       frame.srcdoc = html
+      this.webIframe = frame
       this.media.appendChild(frame)
     } catch {
       if (this.currentKey === key && !this.media.querySelector('img')) this.fail(key)
@@ -292,15 +376,34 @@ export class BackdropManager {
 
   hide() {
     if (this.root) this.root.style.display = 'none'
-    const video = this.media?.querySelector('video')
-    if (video) video.pause()
-    this.videoElement = null
+    this.releaseMedia()
     this.media?.replaceChildren()
     if (this.media) this.media.style.backgroundImage = 'none'
     this.currentKey = null
     this.sceneIframe = null
     this.sceneManifest = null
+    this.webIframe = null
+  }
+
+  stopScene() {
+    try { this.sceneIframe?.contentWindow?.__hermesSceneDispose?.() } catch { /* Frame is already unloaded. */ }
+    this.sceneIframe?.remove?.()
+    this.sceneIframe = null
     this.releaseSceneUrls()
+  }
+
+  releaseMedia() {
+    this.sceneLoad?.abort()
+    this.sceneLoad = null
+    this.onCursorLeave?.()
+    const video = this.videoElement || this.media?.querySelector('video')
+    if (video) {
+      video.pause()
+      video.removeAttribute('src')
+      video.load()
+    }
+    this.videoElement = null
+    this.stopScene()
   }
 
   releaseSceneUrls() {
@@ -308,7 +411,22 @@ export class BackdropManager {
     this.sceneUrls = []
   }
 
+  reportFallback(error) {
+    this.lastMediaIssue = { fallback: true, code: error?.code || 'SCENE_RENDER_FAILED' }
+    if (typeof window !== 'undefined') window.dispatchEvent(new CustomEvent('zcode-skins:wallpaper-error', { detail: this.lastMediaIssue }))
+  }
+
   destroy() {
+    if (this.cursorForwardInit) {
+      window.removeEventListener('mousemove', this.onCursorMove, { capture: true })
+      window.removeEventListener('mouseleave', this.onCursorLeave)
+      document.removeEventListener('mouseleave', this.onCursorLeave)
+      window.removeEventListener('blur', this.onCursorLeave)
+      if (this.cursorFrame !== null) window.cancelAnimationFrame(this.cursorFrame)
+      this.cursorFrame = null
+      this.pendingCursor = null
+      this.cursorForwardInit = false
+    }
     this.hide()
     this.root?.remove()
     this.root = null

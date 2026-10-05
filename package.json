@@ -1,6 +1,6 @@
 {
   "name": "zcode-skins",
-  "version": "1.0.0",
+  "version": "1.1.1",
   "description": "Skin Center and Custom Wallpaper/Backdrop Plugin for ZCode Desktop, adapted from hermes-skins",
   "main": "plugin.js",
   "private": true,
@@ -37,7 +37,9 @@
     "jpeg-js": "^0.4.4"
   },
   "dependencies": {
+    "fflate": "^0.8.3",
     "react": "^19.3.0",
-    "react-dom": "^19.3.0"
+    "react-dom": "^19.3.0",
+    "ws": "^8.22.0"
   }
 }

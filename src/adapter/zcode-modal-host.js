@@ -1,6 +1,9 @@
+import { renderedThemeMode } from '../engine/theme-watcher.js'
 /**
- * ZCode Modal & Trigger Host
- * Mounts the Skin Center modal and floating trigger button into ZCode Desktop DOM.
+ * ZCode Modal Host
+ * Mounts the Skin Center modal into ZCode Desktop DOM. The entry point lives
+ * in ZCode's settings sidebar (see zcode-settings-nav.js) plus the
+ * Ctrl+Shift+S / Alt+S shortcut handled here.
  *
  * Everything renders inside a shadow root with its own stylesheet: ZCode's
  * Tailwind build omits many utilities this UI uses, and host styles would
@@ -12,6 +15,7 @@ import { useState, useEffect } from 'react'
 import { createRoot } from 'react-dom/client'
 import { jsx, jsxs } from 'react/jsx-runtime'
 import { useValue, useTheme } from './zcode-sdk-shim.js'
+import { installSettingsEntry } from './zcode-settings-nav.js'
 import { SkinCenterPage } from '../ui/SkinCenterPage.js'
 import { TryOnBanner } from '../ui/TryOnBanner.js'
 import SKINS_CSS from '../styles/zcode-skins.css'
@@ -123,6 +127,20 @@ export function setupZCodeFloatingHost({ store, controller, prepareScene }) {
   const mountPoint = document.createElement('div')
   shadow.appendChild(mountPoint)
 
+  // Renders the Skin Center page into the settings content pane (inline panel
+  // mode). Returns a dispose function for when the panel closes.
+  function renderPanelInto(mountEl) {
+    const root = createRoot(mountEl)
+    root.render(jsx(SkinCenterPage, { store, controller, prepareScene }))
+    return () => root.unmount()
+  }
+
+  // Sidebar entry + inline panel live in ZCode's own settings page (outside
+  // this shadow root); the modal stays as the global shortcut surface. No
+  // fallback sheet is injected into the light DOM — its cascade layer would
+  // override ZCode's own utilities app-wide (font scale, radii, shadows).
+  const disposeSettingsEntry = installSettingsEntry({ renderPanelInto })
+
   function RootWrapper() {
     const [open, setOpen] = useState(false)
 
@@ -141,13 +159,18 @@ export function setupZCodeFloatingHost({ store, controller, prepareScene }) {
       return () => window.removeEventListener('keydown', handleKeyDown)
     }, [open])
 
+    // Fallback opener for when the settings page is unavailable.
+    useEffect(() => {
+      const handleOpenRequest = () => setOpen(true)
+      window.addEventListener('zcode-skins:open', handleOpenRequest)
+      return () => window.removeEventListener('zcode-skins:open', handleOpenRequest)
+    }, [])
+
     // Mirror ZCode's light/dark state onto the shadow host so the overlay
     // palette follows the app theme instead of being hard-coded dark.
     useEffect(() => {
       const sync = () => {
-        const isDark = document.documentElement.classList.contains('dark') ||
-          document.body.classList.contains('dark') ||
-          window.matchMedia?.('(prefers-color-scheme: dark)').matches
+        const isDark = renderedThemeMode() === 'dark'
         hostContainer.setAttribute('data-zc-theme', isDark ? 'dark' : 'light')
       }
       sync()
@@ -159,18 +182,8 @@ export function setupZCodeFloatingHost({ store, controller, prepareScene }) {
 
     return jsxs('div', {
       children: [
-        // Floating pill trigger
-        !open && jsx('button', {
-          type: 'button',
-          onClick: () => setOpen(true),
-          title: 'ZCode 皮肤中心 (Ctrl+Shift+S)',
-          className: 'zcode-skin-floating-trigger',
-          children: [
-            jsx('span', { className: 'text-sm', children: '🎨' }),
-            jsx('span', { className: 'hidden sm:inline-block', children: '换肤' })
-          ]
-        }),
-        // Modal
+        // Modal (Ctrl+Shift+S / Alt+S; there is deliberately no floating
+        // trigger on the main window — the sidebar entry opens the inline panel)
         jsx(ZCodeSkinCenterModal, {
           isOpen: open,
           onClose: () => setOpen(false),
@@ -182,5 +195,11 @@ export function setupZCodeFloatingHost({ store, controller, prepareScene }) {
     })
   }
 
-  createRoot(mountPoint).render(jsx(RootWrapper, {}))
+  const root = createRoot(mountPoint)
+  root.render(jsx(RootWrapper, {}))
+  return () => {
+    disposeSettingsEntry()
+    root.unmount()
+    hostContainer.remove()
+  }
 }

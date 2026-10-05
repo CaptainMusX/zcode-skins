@@ -134,8 +134,8 @@ export function CustomThemeStudio({ store, onApplySkin }) {
       jsxs('div', {
         className: 'flex flex-col gap-1',
         children: [
-          jsx('h2', { className: 'text-lg font-semibold text-foreground', children: t('themeStudioTitle') }),
-          jsx('p', { className: 'text-xs text-muted-foreground', children: t('themeStudioDesc') })
+          jsx('h2', { className: 'text-xl font-semibold tracking-tight text-foreground', children: t('themeStudioTitle') }),
+          jsx('p', { className: 'text-ui-sm text-muted-foreground', children: t('themeStudioDesc') })
         ]
       }),
       jsxs('div', {
@@ -145,7 +145,7 @@ export function CustomThemeStudio({ store, onApplySkin }) {
           jsxs('div', {
             className: 'flex flex-col gap-2',
             children: [
-              jsx('label', { className: 'text-xs font-medium text-foreground', children: t('customSkinName') }),
+              jsx('label', { className: 'text-ui-sm font-medium text-foreground', children: t('customSkinName') }),
               jsx(Input, {
                 value: name,
                 onChange: e => setName(e.target.value),
@@ -156,7 +156,7 @@ export function CustomThemeStudio({ store, onApplySkin }) {
           jsxs('div', {
             className: 'flex flex-col gap-2',
             children: [
-              jsx('label', { className: 'text-xs font-medium text-foreground', children: t('accentColor') }),
+              jsx('label', { className: 'text-ui-sm font-medium text-foreground', children: t('accentColor') }),
               jsxs('div', {
                 className: 'flex items-center gap-2',
                 children: [
@@ -169,7 +169,7 @@ export function CustomThemeStudio({ store, onApplySkin }) {
                   jsx(Input, {
                     value: accent,
                     onChange: e => setAccent(e.target.value),
-                    className: 'font-mono text-xs'
+                    className: 'font-mono text-ui-sm'
                   })
                 ]
               })
@@ -178,7 +178,7 @@ export function CustomThemeStudio({ store, onApplySkin }) {
           jsxs('div', {
             className: 'flex flex-col gap-2',
             children: [
-              jsx('label', { className: 'text-xs font-medium text-foreground', children: t('backgroundColor') }),
+              jsx('label', { className: 'text-ui-sm font-medium text-foreground', children: t('backgroundColor') }),
               jsxs('div', {
                 className: 'flex items-center gap-2',
                 children: [
@@ -191,7 +191,7 @@ export function CustomThemeStudio({ store, onApplySkin }) {
                   jsx(Input, {
                     value: background,
                     onChange: e => setBackground(e.target.value),
-                    className: 'font-mono text-xs'
+                    className: 'font-mono text-ui-sm'
                   })
                 ]
               })
@@ -200,7 +200,7 @@ export function CustomThemeStudio({ store, onApplySkin }) {
           jsxs('div', {
             className: 'flex flex-col gap-2',
             children: [
-              jsx('label', { className: 'text-xs font-medium text-foreground', children: t('foregroundColor') }),
+              jsx('label', { className: 'text-ui-sm font-medium text-foreground', children: t('foregroundColor') }),
               jsxs('div', {
                 className: 'flex items-center gap-2',
                 children: [
@@ -213,7 +213,7 @@ export function CustomThemeStudio({ store, onApplySkin }) {
                   jsx(Input, {
                     value: foreground,
                     onChange: e => setForeground(e.target.value),
-                    className: 'font-mono text-xs'
+                    className: 'font-mono text-ui-sm'
                   })
                 ]
               })
@@ -222,7 +222,7 @@ export function CustomThemeStudio({ store, onApplySkin }) {
           jsxs('div', {
             className: 'flex flex-col gap-2 md:col-span-2',
             children: [
-              jsx('label', { className: 'text-xs font-medium text-foreground', children: t('wallpaperSource') }),
+              jsx('label', { className: 'text-ui-sm font-medium text-foreground', children: t('wallpaperSource') }),
               jsx(Input, {
                 value: wallpaperUrl,
                 onChange: e => setWallpaperUrl(e.target.value),
@@ -256,7 +256,7 @@ export function CustomThemeStudio({ store, onApplySkin }) {
                   event.target.value = ''
                 }
               }),
-              importError && jsx('span', { className: 'text-xs text-destructive', children: importError })
+              importError && jsx('span', { className: 'text-ui-sm text-destructive', children: importError })
             ]
           }),
           jsx(Button, {

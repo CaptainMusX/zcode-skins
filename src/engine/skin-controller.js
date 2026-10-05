@@ -16,6 +16,7 @@ export class SkinController {
   }
 
   sync(themeName = this.lastTheme, renderedMode = this.lastMode) {
+    if (this.destroyed) return
     this.lastTheme = themeName
     this.lastMode = renderedMode
     const preview = this.store.$tryOnSkin.get()
@@ -25,8 +26,9 @@ export class SkinController {
       this.store.exitTryOn()
     }
     const activePreview = this.store.$tryOnSkin.get()
-    const skin = activePreview || this.findSkin(themeName)
     const config = this.store.$config.get()
+    const skin = activePreview || this.findSkin(themeName) ||
+      (themeName === 'zcode-default' ? this.findSkin(config.activeSkinId) : null)
     const customSource = !activePreview && config.wallpaperSource && !config.wallpaperSource.startsWith('data:image/svg+xml')
     const source = customSource ? config.wallpaperSource : skin?.wallpaper
     const enabled = Boolean(source && (activePreview || config.wallpaperEnabled) && (skin || customSource))
@@ -34,7 +36,7 @@ export class SkinController {
       enabled,
       type: customSource ? config.wallpaperType : (skin?.wallpaperType || 'image'),
       src: source,
-      sceneFrame: config.wallpaperType === 'scene' ? config.weSelection?.framePath : null,
+      sceneFrame: config.wallpaperType === 'scene' ? (config.weSelection?.framePath || config.weSelection?.previewPath) : null,
       webPreview: config.wallpaperType === 'web' ? config.weSelection?.previewPath : null,
       mode: config.wallpaperMode,
       fit: config.wallpaperFit,
@@ -47,6 +49,8 @@ export class SkinController {
       isDark: renderedMode === 'dark'
     })
     this.glass.update({ enabled: showing, glassTransparency: config.panelGlass,
+      composerTransparency: config.composerTransparency, capsuleTransparency: config.capsuleTransparency,
+      cardTransparency: config.cardTransparency,
       bubbleOpacity: config.bubbleOpacity, composerFrost: config.composerFrost,
       surfaceFrost: config.surfaceFrost })
     this.applySkinColors(skin, renderedMode)
@@ -67,7 +71,8 @@ export class SkinController {
     }
     styleEl.textContent = `
       :root, .dark, html {
-        ${colors.accent ? `--color-brand: ${colors.accent} !important; --color-accent: ${colors.accent} !important;` : ''}
+        ${colors.primary ? `--color-brand: ${colors.primary} !important; --color-primary: ${colors.primary} !important;` : ''}
+        ${colors.accent ? `--color-accent: ${colors.accent} !important;` : ''}
         ${colors.card ? `--color-card: ${colors.card} !important;` : ''}
         ${colors.border ? `--color-border: ${colors.border} !important; --color-card-border: ${colors.border} !important;` : ''}
         ${colors.foreground ? `--color-foreground: ${colors.foreground} !important;` : ''}
@@ -139,9 +144,11 @@ export class SkinController {
   }
 
   destroy() {
+    this.destroyed = true
     this.previewCleanup?.()
     this.previewCleanup = null
     this.backdrop.destroy()
     this.glass.destroy()
+    if (typeof document !== 'undefined') document.getElementById('zcode-skin-colors')?.remove()
   }
 }

@@ -1,6 +1,18 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { watchRootTheme } from '../src/engine/theme-watcher.js'
+import { watchRootTheme, renderedThemeMode } from '../src/engine/theme-watcher.js'
+
+test('explicit ZCode light/dark classes override system preference', () => {
+  const oldDocument = globalThis.document, oldWindow = globalThis.window
+  try {
+    globalThis.document = { documentElement: { className: 'theme-zai-light platform-windows-desktop', dataset: {} } }
+    globalThis.window = { matchMedia: () => ({ matches: true }) }
+    assert.equal(renderedThemeMode(), 'light')
+    document.documentElement.className = 'theme-zai-dark'
+    window.matchMedia = () => ({ matches: false })
+    assert.equal(renderedThemeMode(), 'dark')
+  } finally { globalThis.document = oldDocument; globalThis.window = oldWindow }
+})
 
 function fixture({ previewing = false } = {}) {
   const syncs = []

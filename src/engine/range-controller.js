@@ -31,7 +31,15 @@ export class RangeController {
     this.styleEl.id = RANGE_STYLE_ID
     this.styleEl.dataset.plugin = 'hermes-skins'
     this.styleEl.textContent = `
-      :root input[type="range"] {
+      /* Own painting only: the host settings row may wrap the slider in a
+         bordered box (its own surface token), and the glass input tint must
+         not fill the control box itself — RangeController paints track/thumb
+         only, and a tinted box fill reads as the square solid frame reported
+         in screenshots. The input stays transparent and pill-shaped everywhere,
+         including inside plugin pages that restate their own surface fills. */
+      :root input[type="range"],
+      :root[data-hermes-skins-active="true"] [data-hermes-skins-page] input[type="range"],
+      :root[data-hermes-skins-active="true"] [data-hermes-skins-surface] input[type="range"] {
         --hermes-range-accent: var(--dt-primary-solid, var(--theme-primary, var(--ui-accent, #3b82f6)));
         --hermes-range-rest: color-mix(in srgb, var(--ui-bg-chrome, #fff) 80%, var(--ui-text-primary, #64748b));
         --hermes-range-direction: to right;
@@ -40,7 +48,10 @@ export class RangeController {
         min-height: 1.25rem;
         padding: 0;
         border: 0;
+        border-radius: 9999px;
+        outline-offset: 3px;
         background: transparent !important;
+        box-shadow: none !important;
         cursor: pointer;
         vertical-align: middle;
       }

@@ -9,13 +9,12 @@ import { LICENSE_FILES } from './license-files.js'
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 const metadata = JSON.parse(fs.readFileSync(path.join(root, 'package.json'), 'utf8'))
 if (!/^\d+\.\d+\.\d+(?:-[\w.-]+)?$/.test(metadata.version)) throw new Error('Invalid package version')
-const folder = `hermes-skins-v${metadata.version}`
+const folder = `zcode-skins-v${metadata.version}`
 const output = path.join(root, 'dist', `${folder}-windows.zip`)
 const files = new Map()
 const whitelist = [
-  'plugin.js', 'LICENSE', 'patches/hermes-desktop-terminal-alpha.patch',
-  'scripts/install-local.js', 'scripts/install-windows.cmd', 'scripts/license-files.js',
-  'backend/manifest.json', 'backend/plugin_api.py', 'backend/scene-helper.mjs', 'backend/plugin.yaml', 'backend/__init__.py',
+  'dist/zcode-skins.bundle.js', 'LICENSE',
+  'scripts/install-permanent.mjs', 'scripts/restore-official.mjs', 'scripts/patch-asar.mjs', 'scripts/zcode-archive.mjs',
   'third_party/dsh-skins/LICENSE', 'third_party/dsh-skins/NOTICE.md', 'third_party/jpeg-js/LICENSE'
 ]
 function include(source, target = source) {
@@ -28,15 +27,16 @@ for (const source of whitelist) include(source)
 for (const [source] of LICENSE_FILES) include(source)
 include('docs/INSTALL.zh.md', 'INSTALL.zh.md')
 include('docs/INSTALL.md', 'INSTALL.md')
-if (files.get('plugin.js').length > 512 * 1024) throw new Error('Desktop plugin exceeds the host size limit')
-files.set('install.cmd', Buffer.from('@echo off\r\ncall "%~dp0scripts\\install-windows.cmd" %*\r\n'))
+include('docs/PARITY-1.1.0.zh.md', 'PARITY-1.1.0.zh.md')
+if (files.get('dist/zcode-skins.bundle.js').length > 10 * 1024 * 1024) throw new Error('Unexpected bundle size')
+files.set('install.cmd', Buffer.from('@echo off\r\nnode "%~dp0scripts\\install-permanent.mjs" --restart --skip-build %*\r\n'))
 files.set('package.json', Buffer.from(JSON.stringify({
-  name: metadata.name, version: metadata.version, private: true, type: 'module', main: 'plugin.js',
-  license: metadata.license, engines: metadata.engines, scripts: { 'install:desktop': 'node scripts/install-local.js' }
+  name: metadata.name, version: metadata.version, private: true, type: 'module', main: 'dist/zcode-skins.bundle.js',
+  license: metadata.license, engines: metadata.engines, scripts: { 'install:zcode': 'node scripts/install-permanent.mjs --restart --skip-build', 'restore:official': 'node scripts/restore-official.mjs --restart' }
 }, null, 2) + '\n'))
 const digest = bytes => createHash('sha256').update(bytes).digest('hex')
 files.set('PACKAGE-MANIFEST.json', Buffer.from(JSON.stringify({
-  formatVersion: 1, version: metadata.version, platform: 'Windows', testedHost: '0.21.5+3337',
+  formatVersion: 1, version: metadata.version, platform: 'Windows', testedHost: 'ZCode 3.14.4',
   files: Object.fromEntries([...files].map(([name, bytes]) => [name, { bytes: bytes.length, sha256: digest(bytes) }]))
 }, null, 2) + '\n'))
 

@@ -54,7 +54,7 @@ def _project_files(raw_dir: str) -> tuple[Path, Path] | None:
 
 def _cache_dir(package: Path) -> Path:
     stat = package.stat()
-    key = hashlib.sha256(f"{package}:{stat.st_size}:{stat.st_mtime_ns}".encode()).hexdigest()[:24]
+    key = hashlib.sha256(f"parser6:{package}:{stat.st_size}:{stat.st_mtime_ns}".encode()).hexdigest()[:24]
     return get_hermes_home() / "skin-center" / "scene-cache" / key
 
 

@@ -1,3 +1,4 @@
+import { renderedThemeMode } from '../engine/theme-watcher.js'
 /**
  * ZCode Desktop Plugin SDK Shim
  * Lightweight standalone compatibility layer for UI components and reactive state.
@@ -46,18 +47,14 @@ export function useValue(store) {
 export function useTheme() {
   const [mode, setMode] = useState(() => {
     if (typeof document === 'undefined') return 'dark'
-    const isDark = document.documentElement.classList.contains('dark') ||
-      document.body.classList.contains('dark') ||
-      window.matchMedia?.('(prefers-color-scheme: dark)').matches
+    const isDark = renderedThemeMode() === 'dark'
     return isDark ? 'dark' : 'light'
   })
 
   useEffect(() => {
     if (typeof MutationObserver === 'undefined') return
     const updateMode = () => {
-      const isDark = document.documentElement.classList.contains('dark') ||
-        document.body.classList.contains('dark') ||
-        window.matchMedia?.('(prefers-color-scheme: dark)').matches
+      const isDark = renderedThemeMode() === 'dark'
       setMode(isDark ? 'dark' : 'light')
     }
     const obs = new MutationObserver(updateMode)
@@ -94,16 +91,16 @@ export var host = { isAvailable: false }
 // ─── UI Atomic Components (Tailwind-compatible) ─────────────────
 export function Badge({ children, className = '' }) {
   return jsx('span', {
-    className: `inline-flex items-center rounded-full bg-primary/15 px-2 py-0.5 text-[11px] font-medium text-primary border border-primary/20 ${className}`,
+    className: `inline-flex items-center rounded-full bg-primary/15 px-2 py-0.5 text-ui-sm font-medium text-primary border border-primary/20 ${className}`,
     children
   })
 }
 
 export function Button({ children, variant = 'primary', size = 'default', disabled = false, onClick, className = '', ...props }) {
   let baseStyle = 'inline-flex items-center justify-center font-medium rounded-lg transition-all duration-150 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed '
-  if (size === 'sm') baseStyle += 'px-2.5 py-1 text-xs '
+  if (size === 'sm') baseStyle += 'px-2.5 py-1 text-ui-sm '
   else if (size === 'icon') baseStyle += 'p-1.5 '
-  else baseStyle += 'px-3.5 py-1.5 text-sm '
+  else baseStyle += 'px-3.5 py-1.5 text-ui-base '
 
   if (variant === 'primary') {
     baseStyle += 'bg-primary text-primary-foreground hover:opacity-90 shadow-sm '
@@ -131,7 +128,7 @@ export function Input({ value = '', onChange, placeholder = '', className = '', 
     value,
     placeholder,
     onChange,
-    className: `flex h-9 w-full rounded-lg border border-border bg-background/80 px-3 py-1 text-sm shadow-sm transition-colors file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary disabled:cursor-not-allowed disabled:opacity-50 ${className}`,
+    className: `flex h-9 w-full rounded-lg border border-border bg-background/80 px-3 py-1 text-ui-base shadow-sm transition-colors file:border-0 file:bg-transparent file:text-ui-base file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary disabled:cursor-not-allowed disabled:opacity-50 ${className}`,
     ...props
   })
 }
@@ -154,18 +151,21 @@ export function Switch({ checked = false, onCheckedChange, disabled = false, cla
   })
 }
 
-export function SegmentedControl({ value, options = [], onChange, className = '' }) {
+export function SegmentedControl({ value, options = [], onChange, disabled = false, className = '' }) {
   return jsx('div', {
     className: `inline-flex h-9 items-center justify-center rounded-lg bg-muted/50 p-1 text-muted-foreground border border-border/40 ${className}`,
     children: options.map(opt => {
-      const isSelected = opt.value === value
+      // Callers pass options as { id, label }; accept { value, label } too.
+      const optionValue = opt.value ?? opt.id
+      const isSelected = optionValue === value
       return jsx('button', {
-        key: opt.value,
+        key: optionValue,
         type: 'button',
-        onClick: () => onChange?.(opt.value),
-        className: `inline-flex items-center justify-center whitespace-nowrap rounded-md px-3 py-1 text-xs font-medium ring-offset-background transition-all focus-visible:outline-none cursor-pointer ${
+        disabled,
+        onClick: () => !disabled && onChange?.(optionValue),
+        className: `inline-flex items-center justify-center whitespace-nowrap rounded-md px-3 py-1 text-ui-sm font-medium ring-offset-background transition-all focus-visible:outline-none ${
           isSelected ? 'bg-background text-foreground shadow-sm' : 'hover:text-foreground'
-        }`,
+        } ${disabled ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`,
         children: opt.label
       })
     })

@@ -20,13 +20,23 @@
  */
 const THEME_ATTRS = ['class', 'data-hermes-mode', 'data-hermes-theme', 'data-hermes-terminal-alpha']
 
+/** Explicit ZCode appearance wins over the operating system's preference. */
+export function renderedThemeMode() {
+  if (typeof document === 'undefined') return 'dark'
+  const root = document.documentElement
+  const classes = `${root.className || ''} ${document.body?.className || ''}`
+  if (/(?:^|\s)(?:dark|theme-[\w-]*dark)(?:\s|$)/.test(classes)) return 'dark'
+  if (/(?:^|\s)(?:light|theme-[\w-]*light)(?:\s|$)/.test(classes)) return 'light'
+  return root.dataset?.hermesMode || (globalThis.window?.matchMedia?.('(prefers-color-scheme: dark)').matches ? 'dark' : 'light')
+}
+
 export function watchRootTheme(store, controller) {
   if (typeof document === 'undefined' || typeof MutationObserver !== 'function') return () => {}
   const root = document.documentElement
   const stateKey = () => {
     const previewing = Boolean(store.$tryOnSkin.get())
     const themeName = previewing ? '~preview' : (root.dataset.hermesTheme || null)
-    return `${themeName}:${root.dataset.hermesMode || 'dark'}:${root.dataset.hermesTerminalAlpha || 'false'}`
+    return `${themeName}:${renderedThemeMode()}:${root.dataset.hermesTerminalAlpha || 'false'}`
   }
 
   let queued = false
@@ -40,8 +50,7 @@ export function watchRootTheme(store, controller) {
     if (key === lastKey) return
     lastKey = key
     const previewing = Boolean(store.$tryOnSkin.get())
-    controller.sync(previewing ? undefined : (root.dataset.hermesTheme || null),
-      root.dataset.hermesMode || 'dark')
+    controller.sync(previewing ? undefined : (root.dataset.hermesTheme || 'zcode-default'), renderedThemeMode())
   }
 
   const observer = new MutationObserver(() => {

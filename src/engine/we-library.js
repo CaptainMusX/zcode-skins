@@ -1,4 +1,6 @@
 /** Wallpaper Engine library discovery through Hermes Desktop's local file bridge. */
+import { normalizeMediaSource } from './backdrop-manager.js'
+
 const STEAM_APP_ID = '431960'
 const VIDEO_EXTENSIONS = /\.(mp4|webm|mov|mkv|avi)$/i
 const IMAGE_EXTENSIONS = /\.(png|jpe?g|webp|gif|bmp)$/i
@@ -14,7 +16,13 @@ export function safeProjectPath(dir, relative) {
 }
 
 export function wallpaperMediaUrl(path, type) {
-  if (type === 'video') return `hermes-media://stream/${encodeURIComponent(path)}`
+  // Hermes hosts stream local video through their media protocol; ZCode's
+  // renderer converts absolute Windows paths to file:/// URLs instead
+  // (see normalizeMediaSource in backdrop-manager.js).
+  if (type === 'video' && typeof window !== 'undefined' && window.hermesDesktop &&
+      !window.zcodeDesktop) {
+    return `hermes-media://stream/${encodeURIComponent(path)}`
+  }
   return path
 }
 
@@ -118,9 +126,40 @@ export function parseSteamLibraryFolders(text) {
   return [...new Set(paths)]
 }
 
+// A cached entry the scan no longer sees stays only while its project
+// directory is still indexed: the snapshot index may cover less than the
+// whole library (restart timing, index hydration), but once a folder re-pick
+// drops the directory the wallpaper is deleted and must not be resurrected.
+async function cachedItemStillIndexed(bridge, item) {
+  const dir = item?.dir || (typeof item?.id === 'string' && /^[a-z]:[\\/]/i.test(item.id) ? item.id : null)
+  if (!dir) return true
+  const entries = await entriesAt(bridge, dir)
+  return Boolean(entries?.some(entry => entry.name.toLowerCase() === 'project.json'))
+}
+
+// ZCode-only live-disk probe: the persisted index learns about deletions only
+// on a folder re-pick, but image previews load straight from disk through
+// file:/// URLs. A preview that no longer loads means the project vanished
+// from the disk even though the stale index still lists it.
+function probePreviewAlive(path) {
+  return new Promise(resolve => {
+    const source = normalizeMediaSource(path, 'image')
+    if (!source) { resolve(true); return }
+    const image = new Image()
+    const settle = alive => { image.onload = null; image.onerror = null; resolve(alive) }
+    image.onload = () => settle(true)
+    image.onerror = () => settle(false)
+    image.src = source
+  })
+}
+
 export async function scanWallpaperEngine(bridge, manualRoots = []) {
   if (!bridge?.readDir || !bridge?.readFileText) {
-    return { items: [], libraries: [], error: 'Hermes Desktop local file bridge unavailable' }
+    // No usable index: serve the persisted library so the gallery survives
+    // restarts even when the directory index could not be rebuilt.
+    const cached = loadCachedWallpapers()
+    if (cached?.items?.length) return { items: cached.items, libraries: cached.libraries || [], error: null }
+    return { items: [], libraries: [], error: 'Local file bridge unavailable / 本地文件桥不可用' }
   }
   const probes = []
   for (const drive of ['C', 'D', 'E', 'F', 'G', 'H']) {
@@ -161,5 +200,47 @@ export async function scanWallpaperEngine(bridge, manualRoots = []) {
   const scanned = await mapLimit(uniqueContainers, 4, ([path, source]) => scanContainer(bridge, path, source))
   const items = [...new Map(scanned.flat().map(item => [item.id, item])).values()]
     .sort((a, b) => a.title.localeCompare(b.title, 'zh'))
-  return { items, libraries: [...libraries], error: null }
+  // Merge with the persisted library: a fresh scan only sees what the current
+  // directory index covers, so previously discovered projects must survive
+  // restarts (their media paths are absolute and keep working). Cached items
+  // the scan no longer finds are kept only while their directory is still
+  // indexed — a refreshed index (folder re-pick) drops deleted projects.
+  const cached = loadCachedWallpapers()
+  const scannedIds = new Set(items.map(item => item.id))
+  const missing = (cached?.items || []).filter(item => !scannedIds.has(item.id))
+  const survivors = (await mapLimit(missing, 8,
+    async item => (await cachedItemStillIndexed(bridge, item)) ? item : null)).filter(Boolean)
+  let merged = [...new Map([...survivors, ...items].map(item => [item.id, item])).values()]
+    .sort((a, b) => a.title.localeCompare(b.title, 'zh'))
+  // Real-disk cross-check: prune projects whose image preview no longer loads
+  // from disk. Only when at least one probe succeeds — every probe failing
+  // means file:/// loading itself is unavailable, not that all wallpapers are.
+  if (typeof Image !== 'undefined' && bridge.isZcodeBridge) {
+    const probed = await mapLimit(
+      merged.filter(item => item.previewPath && IMAGE_EXTENSIONS.test(item.previewPath)),
+      8, async item => ({ item, alive: await probePreviewAlive(item.previewPath) }))
+    if (probed.length && probed.some(entry => entry.alive)) {
+      const dead = new Set(probed.filter(entry => !entry.alive).map(entry => entry.item.id))
+      merged = merged.filter(item => !dead.has(item.id))
+    }
+  }
+  saveCachedWallpapers(merged, [...libraries])
+  return { items: merged, libraries: [...libraries], error: null }
+}
+
+const ITEM_CACHE_KEY = 'zcode-skins:we-items'
+
+export function loadCachedWallpapers() {
+  try {
+    const parsed = JSON.parse(localStorage.getItem(ITEM_CACHE_KEY) || 'null')
+    return parsed && Array.isArray(parsed.items) ? parsed : null
+  } catch {
+    return null
+  }
+}
+
+export function saveCachedWallpapers(items, libraries) {
+  try {
+    localStorage.setItem(ITEM_CACHE_KEY, JSON.stringify({ items: items.slice(0, 500), libraries, at: Date.now() }))
+  } catch { /* Persistence is best-effort. */ }
 }

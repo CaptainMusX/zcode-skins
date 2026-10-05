@@ -27,11 +27,11 @@ export function TryOnBanner({ store, onApply, onExit }) {
           jsxs('div', {
             children: [
               jsx('div', {
-                className: 'text-sm font-semibold text-foreground',
+                className: 'text-ui-base font-semibold text-foreground',
                 children: t('tryOnBannerTitle', skinName)
               }),
               jsx('div', {
-                className: 'text-xs text-muted-foreground',
+                className: 'text-ui-sm text-muted-foreground',
                 children: t('tryOnBannerDesc')
               })
             ]
