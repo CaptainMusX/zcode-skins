@@ -1,3 +1,7 @@
+## What's new in 1.1.2
+
+Marketplace distribution: this repository is now public and can be added as a plugin marketplace inside ZCode. Installing the "ZCode Skin Center" plugin ships the installer-guiding skill, so ZCode can complete the one-time engine install for you on request. The wallpaper library scan now prunes wallpapers deleted from disk (index re-verification plus live-disk preview probing, with an all-fail safety net), and both cards on the wallpaper tab share the same full page width.
+
 ## ZCode skins 1.1.0
 
 Composer and summary glass now obey transparency/frost settings. Native rounded menus use a single translucent surface. Includes Hermes 1.3.5 cursor/X-ray/shake and renderer lifecycle fixes, versioned scene caches and verified recoverable ZCode installation. See [feature parity and acceptance](docs/PARITY-1.1.0.zh.md).
@@ -24,19 +28,24 @@ Adapted from `hermes-skins` for the ZCode Desktop environment. Independent repos
 
 ## Quick Start
 
-### CDP Live Launch (Zero-touch, Recommended)
+### Option 1: Plugin Marketplace (Recommended)
+
+1. Open ZCode's **Plugin Marketplace → Add → Add Plugin Marketplace**;
+2. Paste this repository (`https://github.com/CaptainMusX/zcode-skins`) as the marketplace source. If your ZCode version only accepts local directories, `git clone` this repo first and paste the cloned folder;
+3. Under **Personal**, find "ZCode Skin Center" and click **Install** — the marketplace ships the plugin package plus an installer-guiding skill;
+4. Then just ask ZCode to "install the skin engine" — it follows the skill to download the latest Release archive and run the one-time host patch (Node.js 22+ required).
+
+### Option 2: Direct Engine Install
 
 ```sh
-npm run build
-npm run start:zcode
+npm install
+npm run install:zcode
 ```
 
-### Static Injection
+ZCode restarts automatically and the beautification loads on every launch. To restore the pristine official state:
 
 ```sh
-npm run inject:zcode
-# To restore official state:
-npm run restore:zcode
+npm run restore:official
 ```
 
 ---

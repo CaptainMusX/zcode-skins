@@ -1,10 +1,10 @@
-# ZCode skins 1.1.0 安装
+# ZCode skins 安装
 
 目标宿主：ZCode Desktop 3.14.4；需要 Node.js 22+。
 
 ## 离线包
 
-解压 zcode-skins-v1.1.0-windows.zip，运行 install.cmd。安装会验证当前宿主和官方备份、保留当前运行版、注入新的单文件皮肤并重启 ZCode。壁纸、字体和用户设置保留。
+解压 GitHub 最新 Release 提供的 zcode-skins-v*-windows.zip，运行 install.cmd。安装会验证当前宿主和官方备份、保留当前运行版、注入新的单文件皮肤并重启 ZCode。壁纸、字体和用户设置保留。
 
 安装位置默认 D:/Program Files/ZCode；其他位置请先设置 ZCODE_DIR 环境变量。
 

@@ -1,6 +1,6 @@
-# ZCode skins 1.1.0 installation
+# ZCode skins installation
 
-Requires Node.js 22+; validated host is ZCode Desktop 3.14.4. Extract the Windows ZIP and run install.cmd. Set ZCODE_DIR for a non-default installation directory.
+Requires Node.js 22+; validated host is ZCode Desktop 3.14.4. Extract the Windows ZIP from the latest GitHub release and run install.cmd. Set ZCODE_DIR for a non-default installation directory.
 
 The installer verifies the host and official archive, saves the current skin installation, applies the renderer bundle and restarts ZCode. User settings, fonts and wallpaper selections remain intact.
 

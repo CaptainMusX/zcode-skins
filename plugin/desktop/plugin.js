@@ -1,6 +1,6 @@
 /**
  * ZCode Skin Center (zcode-skins)
- * Version: 1.1.1
+ * Version: 1.1.2
  * Author: CaptainMusX (adapted for ZCode Desktop)
  *
  * Standalone Desktop Beautification & Skin Plugin for ZCode Desktop.
